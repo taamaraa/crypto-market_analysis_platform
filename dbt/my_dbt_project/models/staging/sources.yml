@@ -1,0 +1,7 @@
+sources:
+  - name: raw_data
+    schema: public
+    tables:
+      - name: airflow_binance
+      - name: airflow_alpha_vantage
+      - name: airflow_coingecko
