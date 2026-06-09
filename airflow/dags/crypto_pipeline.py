@@ -151,7 +151,7 @@ with DAG(
     dag_id="crypto_pipeline",
     default_args=default_args,
     start_date=datetime(2026, 1, 1),
-    schedule="@daily",
+    schedule="@hourly",
     catchup=False
 ) as dag:
 
