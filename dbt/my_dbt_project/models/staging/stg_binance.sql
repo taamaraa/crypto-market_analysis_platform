@@ -2,16 +2,12 @@
 
 select
     symbol,
+    date,
     open_price,
     high_price,
     low_price,
-    last_price,
+    close_price,
     volume,
     quote_volume,
-    price_change,
-    price_change_percent,
-    weighted_avg_price,
-    open_time,
-    close_time,
     updated_at
-from {{ source('raw_data', 'airflow_binance') }}
+from {{ source('raw_data', 'airflow_binance_daily') }}

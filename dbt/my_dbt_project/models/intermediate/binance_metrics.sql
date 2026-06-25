@@ -1,46 +1,79 @@
-{{ config(materialized='view') }}
+{{ config(
+    materialized='incremental',
+    unique_key=['symbol', 'trade_date'],
+    incremental_strategy='delete+insert'
+
+) }}
 
 with source as (
+
     select
         symbol,
+        date,
         open_price,
         high_price,
         low_price,
-        last_price,
+        close_price,
         volume,
         quote_volume,
-        price_change,
-        price_change_percent,
-        weighted_avg_price,
-        open_time,
-        close_time,
         updated_at
     from {{ ref('stg_binance') }}
+
+    {% if is_incremental() %}
+    where date >= (
+        select coalesce(max(trade_date), '1900-01-01'::date) 
+        from {{ this }}
+    )
+    {% endif %}
+
 ),
 
 metrics as (
+
     select
         symbol,
+        date as trade_date,
         open_price,
         high_price,
         low_price,
-        last_price,
+        close_price,
         volume,
         quote_volume,
-        price_change,
-        price_change_percent,
-        weighted_avg_price,
-        to_timestamp(open_time / 1000)::date  as trade_date,
-        to_timestamp(close_time / 1000)::date as close_date,
-        
-        round(((high_price - low_price) / nullif(weighted_avg_price, 0) * 100)::numeric, 2) as volatility_pct,
+
+        round(
+            (close_price - open_price)::numeric,
+            6
+        ) as price_change,
+
+        round(
+            (
+                ((close_price - open_price) / nullif(open_price, 0))
+                * 100
+            )::numeric,
+            2
+        ) as price_change_percent,
+
+        round(
+            (
+                ((high_price - low_price) / nullif(open_price, 0))
+                * 100
+            )::numeric,
+            2
+        ) as volatility_pct,
+
         case
-            when ((high_price - low_price) / nullif(weighted_avg_price, 0) * 100) < 2 then 'LOW'
-            when ((high_price - low_price) / nullif(weighted_avg_price, 0) * 100) < 5 then 'MEDIUM'
+            when (((high_price - low_price) / nullif(open_price, 0)) * 100) < 2
+                then 'LOW'
+            when (((high_price - low_price) / nullif(open_price, 0)) * 100) < 5
+                then 'MEDIUM'
             else 'HIGH'
         end as volatility_label,
+
         updated_at
+
     from source
+
 )
 
-select * from metrics
+select *
+from metrics

@@ -2,8 +2,9 @@
 
 select
     coin_id,
-    prices,
-    market_caps,
-    total_volumes,
+    date,
+    price,
+    market_cap,
+    total_volume,
     updated_at
-from {{ source('raw_data', 'airflow_coingecko') }}
+from {{ source('raw_data', 'airflow_coingecko_daily') }}

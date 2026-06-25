@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: dim_date
+    columns:
+      - name: date_key
+        tests:
+          - unique
+          - not_null
+      - name: full_date
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_source
+    columns:
+      - name: source_key
+        tests:
+          - unique
+          - not_null
+      - name: source_name
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_asset
+    columns:
+      - name: asset_key
+        tests:
+          - unique
+          - not_null
+      - name: symbol
+        tests:
+          - not_null
+
+  - name: fact_market_prices
+    columns:
+      - name: asset_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+      - name: price
+        tests:
+          - not_null
