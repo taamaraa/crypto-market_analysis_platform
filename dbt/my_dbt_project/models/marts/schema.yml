@@ -31,6 +31,10 @@ models:
           - not_null
       - name: symbol
         tests:
+          - unique
+          - not_null
+      - name: asset_type
+        tests:
           - not_null
 
   - name: fact_market_prices
@@ -41,18 +45,53 @@ models:
           - relationships:
               to: ref('dim_asset')
               field: asset_key
+
       - name: date_key
         tests:
           - not_null
           - relationships:
               to: ref('dim_date')
               field: date_key
+
       - name: source_key
         tests:
           - not_null
           - relationships:
               to: ref('dim_source')
               field: source_key
+
       - name: price
+        tests:
+          - not_null
+
+      - name: total_volume
+        tests:
+          - not_null
+
+  - name: fact_price_trends
+    columns:
+      - name: asset_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      - name: moving_avg_7d
+        tests:
+          - not_null
+
+      - name: moving_avg_14d
+        tests:
+          - not_null
+
+      - name: moving_avg_30d
         tests:
           - not_null
