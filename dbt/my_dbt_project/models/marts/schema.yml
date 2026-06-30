@@ -7,6 +7,7 @@ models:
         tests:
           - unique
           - not_null
+
       - name: full_date
         tests:
           - unique
@@ -18,6 +19,7 @@ models:
         tests:
           - unique
           - not_null
+
       - name: source_name
         tests:
           - unique
@@ -29,13 +31,34 @@ models:
         tests:
           - unique
           - not_null
+
+      - name: asset_id
+        tests:
+          - not_null
+
       - name: symbol
         tests:
-          - unique
           - not_null
+
       - name: asset_type
         tests:
           - not_null
+
+      - name: price
+        tests:
+          - not_null
+
+      - name: valid_from
+        tests:
+          - not_null
+
+      - name: valid_to
+
+      - name: is_current
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
 
   - name: fact_market_prices
     columns:

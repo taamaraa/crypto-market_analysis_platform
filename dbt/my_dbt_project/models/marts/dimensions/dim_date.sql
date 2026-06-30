@@ -16,15 +16,15 @@ select
 
     date as full_date,
 
-    extract(day from date) as day,
+    extract(day from date)::int as day,
 
-    extract(month from date) as month,
+    extract(month from date)::int as month,
 
-    extract(quarter from date) as quarter,
+    extract(quarter from date)::int as quarter,
 
-    extract(year from date) as year,
+    extract(year from date)::int as year,
 
-    extract(week from date) as week
+    extract(week from date)::int as week
 
 from dates
 order by date

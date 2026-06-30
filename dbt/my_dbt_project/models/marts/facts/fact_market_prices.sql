@@ -30,6 +30,6 @@ select
     base.price,
     base.total_volume
 from base
-join {{ ref('dim_asset') }} da on base.symbol = da.symbol
+join {{ ref('dim_asset') }} da on base.symbol = da.symbol and da.is_current = true
 join {{ ref('dim_date') }} dd on base.date = dd.full_date
 join {{ ref('dim_source') }} ds on base.source_name = ds.source_name
