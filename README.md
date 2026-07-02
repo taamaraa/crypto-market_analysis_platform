@@ -599,7 +599,7 @@ The project also uses dbt lineage to visualize model dependencies.
 
 ---
 
-# ✅ Data Quality
+#  Data Quality
 
 The warehouse includes automated dbt tests to ensure data integrity.
 
