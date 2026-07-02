@@ -1,10 +1,10 @@
 
 DB_CONN = {
-    'host': 'localhost',
-    'port': 5434,
-    'dbname': 'raw_data',
-    'user': 'admin',
-    'password': 'admin'
+    "host": "raw-db",
+    "port": 5432,
+    "dbname": "raw_data",
+    "user": "admin",
+    "password": "admin"
 }
 
 COINS = ['bitcoin', 'ethereum', 'solana', 'binancecoin', 'cardano']

@@ -61,7 +61,8 @@ services:
     restart: on-failure
 
   airflow-webserver:
-    image: apache/airflow:2.9.3
+    build: .
+    image: custom-airflow-dbt:2.9.3
     container_name: airflow_webserver
     depends_on:
       postgres:
@@ -74,20 +75,29 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@postgres:5432/analytics
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW_CONN_AIRBYTE_DEFAULT: airbyte://host.docker.internal:8000
-      _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-airbyte==3.8.0 psycopg2-binary requests
+
+      DB_HOST: raw-db
+      DB_PORT: 5432
+      DB_USER: admin
+      DB_PASSWORD: admin
+
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
-      - ./airflow/dbt_profile:/home/airflow/.dbt
+      - ./dbt/my_dbt_project/airflow/dbt_profile:/home/airflow/.dbt
+      - ./ingest.py:/opt/airflow/ingest.py
+      - ./config.py:/opt/airflow/config.py
     ports:
       - "8081:8080"
+
     command: airflow webserver
     restart: always
 
   airflow-scheduler:
-    image: apache/airflow:2.9.3
+    build: .
+    image: custom-airflow-dbt:2.9.3
     container_name: airflow_scheduler
     depends_on:
       postgres:
@@ -100,13 +110,21 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@postgres:5432/analytics
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW_CONN_AIRBYTE_DEFAULT: airbyte://host.docker.internal:8000
-      _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-airbyte==3.8.0 psycopg2-binary requests
+     
+      DB_HOST: raw-db
+      DB_PORT: 5432
+      DB_USER: admin
+      DB_PASSWORD: admin
+
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
-      - ./airflow/dbt_profile:/home/airflow/.dbt
+      - ./dbt/my_dbt_project/airflow/dbt_profile:/home/airflow/.dbt
+      - ./ingest.py:/opt/airflow/ingest.py
+      - ./config.py:/opt/airflow/config.py
+
     command: airflow scheduler
     restart: always
 

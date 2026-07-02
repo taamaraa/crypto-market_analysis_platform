@@ -8,6 +8,6 @@ select
     p.moving_avg_30d
 from {{ ref('price_with_averages') }} p
 join {{ ref('dim_asset') }} da
-    on p.coin_id = da.symbol
+    on p.coin_id = da.symbol and da.is_current = true
 join {{ ref('dim_date') }} dd
     on p.date = dd.full_date
