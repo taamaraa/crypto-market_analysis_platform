@@ -7,7 +7,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue)
 ![Airflow](https://img.shields.io/badge/Apache%20Airflow-2.9-red)
 ![Docker](https://img.shields.io/badge/Docker-Containerized-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+
 
 ---
 
