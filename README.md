@@ -184,9 +184,6 @@ The data warehouse follows a layered ELT architecture, where each layer has a de
                     APIs
                      │
                      ▼
-              Raw Data Layer
-                     │
-                     ▼
               Staging Layer
                      │
                      ▼
@@ -203,9 +200,10 @@ Each layer is designed to perform a specific task, making the pipeline modular, 
 
 ---
 
-#  Raw Layer
 
-The Raw layer is the landing zone for all incoming API data.
+#  Staging Layer
+
+The Staging layer is the landing zone for all incoming API data.
 
 This layer stores the original source data with minimal or no transformations applied.
 
@@ -217,46 +215,15 @@ Responsibilities:
 - Enable incremental ingestion
 - Serve as the source for dbt transformations
 
-The raw layer represents the **single source of truth** for the entire warehouse.
-
----
-
-## Raw Tables
-
-| Table | Description |
-|--------|-------------|
-| raw_coingecko | Cryptocurrency daily market data |
-| raw_binance | Binance daily trading metrics |
-| raw_alpha_vantage | Stock market daily prices |
-
----
-
-#  Staging Layer
-
-The staging layer is implemented using **dbt Views**.
-
-Unlike physical tables, staging models do not store data permanently.
-
-Instead, they provide standardized and cleaned views over the raw data.
-
-Responsibilities:
-
-- Rename columns
-- Standardize naming conventions
-- Convert data types
-- Basic cleaning
-- Remove unnecessary columns
-- Prepare consistent datasets
 
 Current staging models:
 
 | Model | Purpose |
 |--------|----------|
-| stg_coingecko | Cleans CoinGecko data |
-| stg_binance | Cleans Binance data |
-| stg_alpha_vantage | Cleans Alpha Vantage data |
+| airflow_coingecko_daily |  Cryptocurrency daily market data |
+| airflow_binance_daily | Binance daily trading metrics |
+| airflow_alpha_vantage | Stock market daily prices |
 
-Since the staging models are materialized as **views**, they always reflect the latest available data stored in the raw layer.
 
 ---
 
@@ -470,8 +437,7 @@ The PostgreSQL warehouse is organized into multiple schemas.
 
 | Schema | Purpose |
 |---------|---------|
-| public_raw | Raw API data |
-| public_staging | Cleaned staging models |
+| public_staging | Raw API data |
 | public_intermediate | Business transformations |
 | public_marts | Final analytical models |
 
