@@ -38,10 +38,12 @@ def safe_get(url, params=None, retries=3, sleep_sec=2):
 
 
 def setup_tables(cur):
-    log.info("Setting up tables...")
+    log.info("Setting up staging tables...")
+
+    cur.execute("CREATE SCHEMA IF NOT EXISTS public_staging")
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.etl_control (
+        CREATE TABLE IF NOT EXISTS public_staging.etl_control (
             pipeline_name varchar PRIMARY KEY,
             last_load_timestamp timestamp,
             is_first_load boolean NOT NULL DEFAULT true,
@@ -51,7 +53,7 @@ def setup_tables(cur):
     """)
 
     cur.execute("""
-        INSERT INTO public.etl_control
+        INSERT INTO public_staging.etl_control
             (pipeline_name, last_load_timestamp, is_first_load, last_run_status)
         VALUES
             (%s, NULL, true, 'INITIALIZED')
@@ -59,7 +61,7 @@ def setup_tables(cur):
     """, (PIPELINE_NAME,))
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.airflow_coingecko_daily (
+        CREATE TABLE IF NOT EXISTS public_staging.airflow_coingecko_daily (
             coin_id      varchar,
             date         date,
             price        float,
@@ -71,7 +73,7 @@ def setup_tables(cur):
     """)
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.airflow_binance_daily (
+        CREATE TABLE IF NOT EXISTS public_staging.airflow_binance_daily (
             symbol               varchar,
             date                 date,
             open_price           float,
@@ -90,7 +92,7 @@ def setup_tables(cur):
     """)
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.airflow_alpha_vantage (
+        CREATE TABLE IF NOT EXISTS public_staging.airflow_alpha_vantage (
             symbol     varchar,
             date       date,
             open       float,
@@ -103,13 +105,13 @@ def setup_tables(cur):
         )
     """)
 
-    log.info("Tables ready.")
+    log.info("Staging tables ready.")
 
 
 def get_is_first_load(cur):
     cur.execute("""
         SELECT is_first_load
-        FROM public.etl_control
+        FROM public_staging.etl_control
         WHERE pipeline_name = %s
     """, (PIPELINE_NAME,))
 
@@ -117,9 +119,19 @@ def get_is_first_load(cur):
     return result[0] if result else True
 
 
+def truncate_staging_tables(cur):
+    log.info("Truncating staging tables before latest load...")
+
+    cur.execute("TRUNCATE TABLE public_staging.airflow_coingecko_daily")
+    cur.execute("TRUNCATE TABLE public_staging.airflow_binance_daily")
+    cur.execute("TRUNCATE TABLE public_staging.airflow_alpha_vantage")
+
+    log.info("Staging tables truncated.")
+
+
 def mark_pipeline_success(cur):
     cur.execute("""
-        UPDATE public.etl_control
+        UPDATE public_staging.etl_control
         SET
             is_first_load = false,
             last_load_timestamp = now(),
@@ -131,7 +143,7 @@ def mark_pipeline_success(cur):
 
 def mark_pipeline_failed(cur):
     cur.execute("""
-        UPDATE public.etl_control
+        UPDATE public_staging.etl_control
         SET
             last_run_status = 'FAILED',
             updated_at = now()
@@ -139,20 +151,10 @@ def mark_pipeline_failed(cur):
     """, (PIPELINE_NAME,))
 
 
-def truncate_raw_tables(cur):
-    log.info("First load detected - truncating raw tables...")
-
-    cur.execute("TRUNCATE TABLE public.airflow_coingecko_daily")
-    cur.execute("TRUNCATE TABLE public.airflow_binance_daily")
-    cur.execute("TRUNCATE TABLE public.airflow_alpha_vantage")
-
-    log.info("Raw tables truncated.")
-
-
-def ingest_coingecko(cur, first_load):
+def ingest_coingecko(cur):
     log.info("Starting CoinGecko ingestion...")
 
-    days = 30 if first_load else 1
+    days = 1
 
     for coin in COINS:
         log.info(f"Fetching {coin}...")
@@ -185,7 +187,7 @@ def ingest_coingecko(cur, first_load):
             date_val = datetime.fromtimestamp(ts / 1000).date()
 
             cur.execute("""
-                INSERT INTO public.airflow_coingecko_daily
+                INSERT INTO public_staging.airflow_coingecko_daily
                     (coin_id, date, price, market_cap, total_volume, updated_at)
                 VALUES (%s, %s, %s, %s, %s, now())
                 ON CONFLICT (coin_id, date) DO UPDATE SET
@@ -207,13 +209,13 @@ def ingest_coingecko(cur, first_load):
     log.info("CoinGecko done.")
 
 
-def ingest_binance(cur, first_load):
+def ingest_binance(cur):
     log.info("Starting Binance ingestion...")
 
-    limit = 30 if first_load else 1
+    limit = 1
 
     for symbol in BINANCE_SYMBOLS:
-        log.info(f"Fetching {symbol} daily klines...")
+        log.info(f"Fetching {symbol} daily kline...")
 
         url = "https://api.binance.com/api/v3/klines"
         params = {
@@ -239,7 +241,7 @@ def ingest_binance(cur, first_load):
             date_val = datetime.fromtimestamp(open_time_ms / 1000).date()
 
             cur.execute("""
-                INSERT INTO public.airflow_binance_daily
+                INSERT INTO public_staging.airflow_binance_daily
                     (symbol, date, open_price, high_price, low_price, close_price,
                      volume, close_time, quote_volume, number_of_trades,
                      taker_buy_base_vol, taker_buy_quote_vol, updated_at)
@@ -271,16 +273,20 @@ def ingest_binance(cur, first_load):
                 float(kline[10])
             ))
 
-        log.info(f"{symbol} ingested ({len(data)} days)")
+        log.info(f"{symbol} ingested ({len(data)} day)")
         time.sleep(1)
 
     log.info("Binance done.")
 
 
-def ingest_alpha_vantage(cur, first_load):
+def ingest_alpha_vantage(cur):
     log.info("Starting Alpha Vantage ingestion...")
 
-    outputsize = "compact"
+    if not ALPHA_API_KEY:
+        log.warning("ALPHA_API_KEY is missing. Skipping Alpha Vantage ingestion.")
+        return
+
+    today = datetime.today().date()
 
     for symbol in ALPHA_SYMBOLS:
         log.info(f"Fetching {symbol}...")
@@ -289,7 +295,7 @@ def ingest_alpha_vantage(cur, first_load):
         params = {
             "function": "TIME_SERIES_DAILY",
             "symbol": symbol,
-            "outputsize": outputsize,
+            "outputsize": "compact",
             "apikey": ALPHA_API_KEY
         }
 
@@ -306,14 +312,19 @@ def ingest_alpha_vantage(cur, first_load):
             log.warning(f"No Alpha Vantage data for {symbol}")
             continue
 
+        inserted_count = 0
+
         for date_str, values in time_series.items():
             try:
                 date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
             except Exception:
                 continue
 
+            if date_obj != today:
+                continue
+
             cur.execute("""
-                INSERT INTO public.airflow_alpha_vantage
+                INSERT INTO public_staging.airflow_alpha_vantage
                     (symbol, date, open, high, low, close, volume, updated_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, now())
                 ON CONFLICT (symbol, date) DO UPDATE SET
@@ -333,7 +344,9 @@ def ingest_alpha_vantage(cur, first_load):
                 int(values["5. volume"])
             ))
 
-        log.info(f"{symbol} ingested ({len(time_series)} days)")
+            inserted_count += 1
+
+        log.info(f"{symbol} ingested ({inserted_count} latest records)")
 
     log.info("Alpha Vantage done.")
 
@@ -354,17 +367,16 @@ def main():
         first_load = get_is_first_load(cur)
         log.info(f"is_first_load = {first_load}")
 
-        if first_load:
-            truncate_raw_tables(cur)
-            conn.commit()
-
-        ingest_coingecko(cur, first_load)
+        truncate_staging_tables(cur)
         conn.commit()
 
-        ingest_binance(cur, first_load)
+        ingest_coingecko(cur)
         conn.commit()
 
-        ingest_alpha_vantage(cur, first_load)
+        ingest_binance(cur)
+        conn.commit()
+
+        ingest_alpha_vantage(cur)
         conn.commit()
 
         mark_pipeline_success(cur)

@@ -37,7 +37,7 @@ latest_stocks as (
         'Stock' as asset_type,
         close as price,
         row_number() over(partition by symbol order by date desc) as rn
-    from {{ ref('stg_alpha_vantage') }}
+    from {{ source('raw_data', 'airflow_alpha_vantage') }}
 ),
 
 current_assets as (

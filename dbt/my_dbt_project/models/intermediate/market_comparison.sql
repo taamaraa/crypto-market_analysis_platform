@@ -1,6 +1,7 @@
 {{ config(materialized='view') }}
 
 with crypto as (
+
     select
         symbol,
         date,
@@ -9,22 +10,29 @@ with crypto as (
         source
     from {{ ref('crypto_unified') }}
     where source = 'coingecko'
+
 ),
 
 stocks as (
+
     select
         symbol,
         date,
-        close                            as price,
-        volume::float                    as total_volume,
-        'alpha_vantage'                  as source
-    from {{ ref('stg_alpha_vantage') }}
+        close as price,
+        volume::float as total_volume,
+        'alpha_vantage' as source
+    from {{ source('raw_data', 'airflow_alpha_vantage') }}
+
 ),
 
 unified as (
+
     select * from crypto
+
     union all
+
     select * from stocks
+
 )
 
 select

@@ -20,8 +20,7 @@ with base as (
         close as price,
         volume::float as total_volume,
         'Alpha Vantage' as source_name
-    from {{ ref('stg_alpha_vantage') }}
-)
+    from {{ source('raw_data', 'airflow_alpha_vantage') }})
 
 select
     da.asset_key,

@@ -11,10 +11,10 @@ select
     price,
     market_cap,
     total_volume
-from {{ ref('stg_coingecko') }}
+from {{ source('raw_data', 'airflow_coingecko_daily') }}
 
 {% if is_incremental() %}
-where date >= (
+where date > (
     select coalesce(max(date), '1900-01-01'::date) 
     from {{ this }}
 )

@@ -3,7 +3,7 @@ version: 2
 sources:
   - name: raw_data
     database: raw_data
-    schema: public
+    schema: public_staging
     tables:
       - name: airflow_binance_daily
       - name: airflow_alpha_vantage

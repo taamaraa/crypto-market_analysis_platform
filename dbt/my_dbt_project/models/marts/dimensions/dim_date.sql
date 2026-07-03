@@ -6,7 +6,7 @@ with dates as (
 
     union
 
-    select distinct date from {{ ref('stg_alpha_vantage') }}
+    select distinct date from {{ source('raw_data', 'airflow_alpha_vantage') }}
 
 )
 
