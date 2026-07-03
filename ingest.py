@@ -151,10 +151,10 @@ def mark_pipeline_failed(cur):
     """, (PIPELINE_NAME,))
 
 
-def ingest_coingecko(cur):
+def ingest_coingecko(cur, first_load):
     log.info("Starting CoinGecko ingestion...")
 
-    days = 1
+    days = 30 if first_load else 1
 
     for coin in COINS:
         log.info(f"Fetching {coin}...")
@@ -209,10 +209,10 @@ def ingest_coingecko(cur):
     log.info("CoinGecko done.")
 
 
-def ingest_binance(cur):
+def ingest_binance(cur, first_load):
     log.info("Starting Binance ingestion...")
 
-    limit = 1
+    limit = 30 if first_load else 1
 
     for symbol in BINANCE_SYMBOLS:
         log.info(f"Fetching {symbol} daily kline...")
@@ -279,7 +279,7 @@ def ingest_binance(cur):
     log.info("Binance done.")
 
 
-def ingest_alpha_vantage(cur):
+def ingest_alpha_vantage(cur, first_load):
     log.info("Starting Alpha Vantage ingestion...")
 
     if not ALPHA_API_KEY:
@@ -320,7 +320,7 @@ def ingest_alpha_vantage(cur):
             except Exception:
                 continue
 
-            if date_obj != today:
+            if not first_load and date_obj != today:
                 continue
 
             cur.execute("""
@@ -370,13 +370,13 @@ def main():
         truncate_staging_tables(cur)
         conn.commit()
 
-        ingest_coingecko(cur)
+        ingest_coingecko(cur, first_load)
         conn.commit()
 
-        ingest_binance(cur)
+        ingest_binance(cur, first_load)
         conn.commit()
 
-        ingest_alpha_vantage(cur)
+        ingest_alpha_vantage(cur, first_load)
         conn.commit()
 
         mark_pipeline_success(cur)
