@@ -76,6 +76,14 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW_CONN_AIRBYTE_DEFAULT: airbyte://host.docker.internal:8000
 
+      AIRFLOW__SMTP__SMTP_HOST: smtp.gmail.com
+      AIRFLOW__SMTP__SMTP_PORT: 587
+      AIRFLOW__SMTP__SMTP_STARTTLS: "True"
+      AIRFLOW__SMTP__SMTP_SSL: "False"
+      AIRFLOW__SMTP__SMTP_USER: ${SMTP_USER}
+      AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD}
+      AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
+
       DB_HOST: raw-db
       DB_PORT: 5432
       DB_USER: admin
@@ -91,7 +99,6 @@ services:
       - ./config.py:/opt/airflow/config.py
     ports:
       - "8081:8080"
-
     command: airflow webserver
     restart: always
 
@@ -110,7 +117,15 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@postgres:5432/analytics
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW_CONN_AIRBYTE_DEFAULT: airbyte://host.docker.internal:8000
-     
+
+      AIRFLOW__SMTP__SMTP_HOST: smtp.gmail.com
+      AIRFLOW__SMTP__SMTP_PORT: 587
+      AIRFLOW__SMTP__SMTP_STARTTLS: "True"
+      AIRFLOW__SMTP__SMTP_SSL: "False"
+      AIRFLOW__SMTP__SMTP_USER: ${SMTP_USER}
+      AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD}
+      AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
+
       DB_HOST: raw-db
       DB_PORT: 5432
       DB_USER: admin
@@ -124,7 +139,6 @@ services:
       - ./dbt/my_dbt_project/airflow/dbt_profile:/home/airflow/.dbt
       - ./ingest.py:/opt/airflow/ingest.py
       - ./config.py:/opt/airflow/config.py
-
     command: airflow scheduler
     restart: always
 
