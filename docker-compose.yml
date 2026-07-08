@@ -89,12 +89,14 @@ services:
       DB_USER: admin
       DB_PASSWORD: admin
 
+      ALPHA_API_KEY: ${ALPHA_API_KEY}
+
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
-      - ./dbt/my_dbt_project/airflow/dbt_profile:/home/airflow/.dbt
+      - ./dbt/crypto_market_analytics/airflow/dbt_profile:/home/airflow/.dbt
       - ./ingest.py:/opt/airflow/ingest.py
       - ./config.py:/opt/airflow/config.py
     ports:
@@ -131,12 +133,14 @@ services:
       DB_USER: admin
       DB_PASSWORD: admin
 
+      ALPHA_API_KEY: ${ALPHA_API_KEY}
+
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
-      - ./dbt/my_dbt_project/airflow/dbt_profile:/home/airflow/.dbt
+      - ./dbt/crypto_market_analytics/airflow/dbt_profile:/home/airflow/.dbt
       - ./ingest.py:/opt/airflow/ingest.py
       - ./config.py:/opt/airflow/config.py
     command: airflow scheduler

@@ -10,3 +10,10 @@ DB_CONN = {
 COINS = ['bitcoin', 'ethereum', 'solana', 'binancecoin', 'cardano']
 BINANCE_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT']
 ALPHA_SYMBOLS = ['TSLA']
+##ALPHA_SYMBOLS = [
+ ##   "AAPL",
+ ##   "MSFT",
+  ##  "NVDA",
+  ##  "TSLA",
+  ##  "AMZN"
+##] ##import these later, i need them for power bi

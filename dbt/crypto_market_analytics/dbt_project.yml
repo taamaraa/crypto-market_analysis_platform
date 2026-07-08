@@ -1,7 +1,7 @@
-name: 'my_dbt_project'
+name: 'crypto_market_analytics'
 version: '1.0.0'
 
-profile: 'my_dbt_project'
+profile: 'crypto_market_analytics'
 
 model-paths: ["models"]
 analysis-paths: ["analyses"]

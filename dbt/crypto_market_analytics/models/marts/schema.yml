@@ -44,10 +44,6 @@ models:
         tests:
           - not_null
 
-      - name: price
-        tests:
-          - not_null
-
       - name: valid_from
         tests:
           - not_null

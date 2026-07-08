@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from airflow.utils.email import send_email
 
 DBT_BIN = "/home/airflow/.local/bin/dbt"
-DBT_PROJECT_DIR = "/opt/airflow/dbt/my_dbt_project"
+DBT_PROJECT_DIR = "/opt/airflow/dbt/crypto_market_analytics"
 DBT_PROFILES_DIR = "/home/airflow/.dbt"
 
 ALERT_EMAIL = "t.srbinoska03@gmail.com"
@@ -56,7 +56,7 @@ with DAG(
     dag_id="crypto_pipeline",
     default_args=default_args,
     start_date=datetime(2026, 1, 1),
-    schedule="@daily",
+    schedule_interval="45 7 * * *",
     catchup=False,
     description="Daily ELT pipeline: ingest raw API data, run dbt models and tests",
 ) as dag:

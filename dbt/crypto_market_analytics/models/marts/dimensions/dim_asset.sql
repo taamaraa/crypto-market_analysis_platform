@@ -1,22 +1,47 @@
 {% set close_old_versions %}
     {% if is_incremental() %}
-        update {{ this }} as old
+        update {{ this }} as d
         set
             valid_to = current_timestamp,
             is_current = false
-        where old.is_current = true
-          and exists (
-              select 1
-              from {{ this }} as newer
-              where newer.asset_id = old.asset_id
-                and newer.asset_key > old.asset_key
+        from (
+            select asset_id, symbol, asset_type
+            from (
+                select
+                    symbol as asset_id,
+                    symbol,
+                    'Crypto' as asset_type,
+                    row_number() over(partition by symbol order by date desc) as rn
+                from {{ ref('crypto_unified') }}
+                where source = 'coingecko'
+            ) crypto
+            where rn = 1
+
+            union all
+
+            select asset_id, symbol, asset_type
+            from (
+                select
+                    symbol as asset_id,
+                    symbol,
+                    'Stock' as asset_type,
+                    row_number() over(partition by symbol order by date desc) as rn
+                from {{ source('raw_data', 'airflow_alpha_vantage') }}
+            ) stocks
+            where rn = 1
+        ) latest
+        where d.asset_id = latest.asset_id
+          and d.is_current = true
+          and (
+              d.symbol is distinct from latest.symbol
+              or d.asset_type is distinct from latest.asset_type
           );
     {% endif %}
 {% endset %}
 
 {{ config(
     materialized='incremental',
-    post_hook=close_old_versions
+    pre_hook=close_old_versions
 ) }}
 
 with latest_crypto as (
@@ -24,7 +49,6 @@ with latest_crypto as (
         symbol as asset_id,
         symbol,
         'Crypto' as asset_type,
-        price,
         row_number() over(partition by symbol order by date desc) as rn
     from {{ ref('crypto_unified') }}
     where source = 'coingecko'
@@ -35,19 +59,18 @@ latest_stocks as (
         symbol as asset_id,
         symbol,
         'Stock' as asset_type,
-        close as price,
         row_number() over(partition by symbol order by date desc) as rn
     from {{ source('raw_data', 'airflow_alpha_vantage') }}
 ),
 
 current_assets as (
-    select asset_id, symbol, asset_type, price
+    select asset_id, symbol, asset_type
     from latest_crypto
     where rn = 1
 
     union all
 
-    select asset_id, symbol, asset_type, price
+    select asset_id, symbol, asset_type
     from latest_stocks
     where rn = 1
 ),
@@ -62,9 +85,6 @@ records_to_insert as (
             on c.asset_id = d.asset_id
            and d.is_current = true
         where d.asset_id is null
-           or c.symbol <> d.symbol
-           or c.asset_type <> d.asset_type
-           or c.price <> d.price
 
     {% else %}
 
@@ -91,7 +111,6 @@ select
     asset_id,
     symbol,
     asset_type,
-    price,
     current_timestamp as valid_from,
     null::timestamp as valid_to,
     true as is_current
