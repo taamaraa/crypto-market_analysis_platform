@@ -15,10 +15,15 @@ clean-targets:
   - "dbt_packages"
 
 models:
-  my_dbt_project:
+  crypto_market_analytics:
+    staging:
+      +materialized: view
+      +schema: staging
+
     intermediate:
       +materialized: view
       +schema: intermediate
+
     marts:
       +materialized: table
       +schema: marts

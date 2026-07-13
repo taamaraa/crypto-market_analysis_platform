@@ -1,8 +1,9 @@
 import requests
 import psycopg2
 import time
+import uuid
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import os
 
 from config import DB_CONN, COINS, BINANCE_SYMBOLS, ALPHA_SYMBOLS
@@ -11,7 +12,7 @@ ALPHA_API_KEY = os.getenv("ALPHA_API_KEY")
 PIPELINE_NAME = "crypto_pipeline"
 
 MIN_BACKFILL_DAYS = 1
-MAX_BACKFILL_DAYS = 30  
+MAX_BACKFILL_DAYS = 30
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,7 +22,6 @@ log = logging.getLogger(__name__)
 
 
 def to_utc_date(timestamp_ms):
-    
     return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).date()
 
 
@@ -80,6 +80,24 @@ def setup_tables(cur):
             (%s, NULL, true, 'INITIALIZED')
         ON CONFLICT (pipeline_name) DO NOTHING
     """, (PIPELINE_NAME,))
+
+    # run-level metrics per source: how many rows, how long, what failed.
+    # etl_control only ever holds the latest snapshot for the whole
+    # pipeline - this keeps history so a bad run doesn't just get
+    # silently overwritten by the next one.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS public_staging.pipeline_logs (
+            id               serial,
+            run_id           uuid NOT NULL,
+            source           varchar NOT NULL,
+            status           varchar NOT NULL,
+            records_inserted integer DEFAULT 0,
+            duration_seconds float,
+            error_message    text,
+            run_timestamp    timestamptz DEFAULT now(),
+            PRIMARY KEY (run_id, source)
+        )
+    """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS public_staging.airflow_coingecko_daily (
@@ -194,11 +212,27 @@ def mark_pipeline_failed(cur):
     """, (PIPELINE_NAME,))
 
 
+def log_run(cur, run_id, source, status, records=0, duration=0.0, error=None):
+    cur.execute("""
+        INSERT INTO public_staging.pipeline_logs
+            (run_id, source, status, records_inserted, duration_seconds, error_message, run_timestamp)
+        VALUES (%s, %s, %s, %s, %s, %s, now())
+        ON CONFLICT (run_id, source) DO UPDATE SET
+            status = EXCLUDED.status,
+            records_inserted = EXCLUDED.records_inserted,
+            duration_seconds = EXCLUDED.duration_seconds,
+            error_message = EXCLUDED.error_message
+    """, (str(run_id), source, status, records, duration, error))
+    log.info(f"[LOG] {source} -> {status} | records: {records} | duration: {duration:.2f}s")
+
+
 def ingest_coingecko(cur, backfill_days):
+    """Returns (inserted_total, failed_coins)."""
     log.info(f"Starting CoinGecko ingestion (backfill_days={backfill_days})...")
 
     inserted_total = 0
-    failed_total = 0
+    skipped_total = 0
+    failed_coins = []
 
     for coin in COINS:
         log.info(f"Fetching {coin}...")
@@ -214,13 +248,17 @@ def ingest_coingecko(cur, backfill_days):
 
         if not response or response.status_code != 200:
             log.error(f"Failed CoinGecko for {coin}")
+            failed_coins.append(coin)
             continue
 
         data = response.json()
 
         if "prices" not in data:
             log.warning(f"No prices for {coin}")
+            failed_coins.append(coin)
             continue
+
+        coin_inserted = 0
 
         for price_entry, market_entry, volume_entry in zip(
             data["prices"],
@@ -248,23 +286,31 @@ def ingest_coingecko(cur, backfill_days):
                     volume_entry[1]
                 ))
                 inserted_total += 1
+                coin_inserted += 1
 
             except Exception as e:
                 # one malformed record shouldn't kill the whole source
-                failed_total += 1
+                skipped_total += 1
                 log.warning(f"Skipping bad CoinGecko record for {coin}: {e}")
 
-        log.info(f"{coin} ingested")
+        if coin_inserted == 0:
+            # response was 200 but nothing usable came out of it
+            failed_coins.append(coin)
+
+        log.info(f"{coin} ingested ({coin_inserted} rows)")
         time.sleep(3)
 
-    log.info(f"CoinGecko done. inserted={inserted_total} skipped={failed_total}")
+    log.info(f"CoinGecko done. inserted={inserted_total} skipped={skipped_total}")
+    return inserted_total, failed_coins
 
 
 def ingest_binance(cur, backfill_days):
+    """Returns (inserted_total, failed_symbols)."""
     log.info(f"Starting Binance ingestion (backfill_days={backfill_days})...")
 
     inserted_total = 0
-    failed_total = 0
+    skipped_total = 0
+    failed_symbols = []
 
     for symbol in BINANCE_SYMBOLS:
         log.info(f"Fetching {symbol} daily kline...")
@@ -280,13 +326,17 @@ def ingest_binance(cur, backfill_days):
 
         if not response or response.status_code != 200:
             log.error(f"Failed Binance for {symbol}")
+            failed_symbols.append(symbol)
             continue
 
         data = response.json()
 
         if not isinstance(data, list):
             log.warning(f"Bad response for {symbol}: {data}")
+            failed_symbols.append(symbol)
             continue
+
+        symbol_inserted = 0
 
         for kline in data:
             try:
@@ -326,29 +376,37 @@ def ingest_binance(cur, backfill_days):
                     float(kline[10])
                 ))
                 inserted_total += 1
+                symbol_inserted += 1
 
             except Exception as e:
-                failed_total += 1
+                skipped_total += 1
                 log.warning(f"Skipping bad Binance record for {symbol}: {e}")
 
-        log.info(f"{symbol} ingested ({len(data)} day(s) received)")
+        if symbol_inserted == 0:
+            failed_symbols.append(symbol)
+
+        log.info(f"{symbol} ingested ({symbol_inserted} day(s))")
         time.sleep(1)
 
-    log.info(f"Binance done. inserted={inserted_total} skipped={failed_total}")
+    log.info(f"Binance done. inserted={inserted_total} skipped={skipped_total}")
+    return inserted_total, failed_symbols
 
 
 def ingest_alpha_vantage(cur, backfill_days):
+    """Returns (inserted_total, failed_symbols).
+
+    Uses the latest available trading dates returned by Alpha Vantage.
+    """
     log.info(f"Starting Alpha Vantage ingestion (backfill_days={backfill_days})...")
 
     if not ALPHA_API_KEY:
         raise RuntimeError(
             "ALPHA_API_KEY is not set. Refusing to silently skip Alpha Vantage "
-            "ingestion - fix the environment variable (see .env / docker-compose.yml) "
-            "instead of letting this pass as a false SUCCESS."
+            "ingestion - fix the environment variable."
         )
 
-    inserted_total = 0
-    failed_total = 0
+    total_inserted = 0
+    failed_symbols = []
 
     for symbol in ALPHA_SYMBOLS:
         log.info(f"Fetching {symbol}...")
@@ -362,9 +420,13 @@ def ingest_alpha_vantage(cur, backfill_days):
         }
 
         response = safe_get(url, params)
+        
+        time.sleep(1.2)
+
 
         if not response or response.status_code != 200:
             log.error(f"Alpha Vantage failed for {symbol}")
+            failed_symbols.append(symbol)
             continue
 
         data = response.json()
@@ -375,22 +437,24 @@ def ingest_alpha_vantage(cur, backfill_days):
                 f"No Alpha Vantage data for {symbol}: "
                 f"{data.get('Note') or data.get('Information') or data}"
             )
+            failed_symbols.append(symbol)
             continue
 
-        # Alpha Vantage uses trading days, not calendar days.
-        # So we take the latest available N trading records.
+        inserted_count = 0
+
         sorted_dates = sorted(time_series.keys(), reverse=True)
         dates_to_process = sorted_dates[:backfill_days]
 
         for date_str in dates_to_process:
+            values = time_series[date_str]
+
             try:
                 date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
             except Exception:
-                failed_total += 1
-                log.warning(f"Skipping invalid Alpha Vantage date for {symbol}: {date_str}")
+                log.warning(
+                    f"Skipping invalid Alpha Vantage date for {symbol}: {date_str}"
+                )
                 continue
-
-            values = time_series[date_str]
 
             try:
                 cur.execute("""
@@ -414,23 +478,31 @@ def ingest_alpha_vantage(cur, backfill_days):
                     int(values["5. volume"])
                 ))
 
-                inserted_total += 1
+                inserted_count += 1
 
             except Exception as e:
-                failed_total += 1
                 log.warning(
                     f"Skipping bad Alpha Vantage record for {symbol} "
                     f"on {date_str}: {e}"
                 )
 
-        log.info(f"{symbol} ingested")
+        if inserted_count == 0:
+            failed_symbols.append(symbol)
 
-    log.info(f"Alpha Vantage done. inserted={inserted_total} skipped={failed_total}")
+        total_inserted += inserted_count
+        log.info(f"{symbol} ingested ({inserted_count} records)")
+
+    log.info(f"Alpha Vantage done. inserted={total_inserted}")
+    return total_inserted, failed_symbols
+
 
 def main():
     log.info("=" * 50)
     log.info(f"Starting ingestion at {datetime.now(timezone.utc)}")
     log.info("=" * 50)
+
+    run_id = uuid.uuid4()
+    log.info(f"Run ID: {run_id}")
 
     conn = psycopg2.connect(**DB_CONN)
     conn.autocommit = False
@@ -446,14 +518,65 @@ def main():
         truncate_staging_tables(cur)
         conn.commit()
 
-        ingest_coingecko(cur, backfill_days)
+        # --- CoinGecko ---
+        t0 = time.time()
+        cg_count, cg_failed = ingest_coingecko(cur, backfill_days)
+        conn.commit()
+        log_run(
+            cur, run_id, "coingecko",
+            "failed" if (cg_count == 0 or cg_failed) else "success",
+            cg_count, time.time() - t0,
+            f"failed coins: {cg_failed}" if cg_failed else None
+        )
         conn.commit()
 
-        ingest_binance(cur, backfill_days)
+        # --- Binance ---
+        t0 = time.time()
+        bn_count, bn_failed = ingest_binance(cur, backfill_days)
+        conn.commit()
+        log_run(
+            cur, run_id, "binance",
+            "failed" if (bn_count == 0 or bn_failed) else "success",
+            bn_count, time.time() - t0,
+            f"failed symbols: {bn_failed}" if bn_failed else None
+        )
         conn.commit()
 
-        ingest_alpha_vantage(cur, backfill_days)
+        # --- Alpha Vantage ---
+        t0 = time.time()
+        av_count, av_failed = ingest_alpha_vantage(cur, backfill_days)
         conn.commit()
+        log_run(
+            cur, run_id, "alpha_vantage",
+            "failed" if (av_count == 0 or av_failed) else "success",
+            av_count, time.time() - t0,
+            f"failed symbols: {av_failed}" if av_failed else None
+        )
+        conn.commit()
+
+        # Don't report SUCCESS unless every source actually produced data.
+        # A run that finishes without raising is not the same thing as a
+        # run that actually pulled everything - this is what silently let
+        # Alpha Vantage sit stale for days while etl_control said SUCCESS.
+        problems = []
+
+        if cg_count == 0:
+            problems.append("CoinGecko: 0 rows inserted")
+        elif cg_failed:
+            problems.append(f"CoinGecko: failed coins {cg_failed}")
+
+        if bn_count == 0:
+            problems.append("Binance: 0 rows inserted")
+        elif bn_failed:
+            problems.append(f"Binance: failed symbols {bn_failed}")
+
+        if av_count == 0:
+            problems.append("Alpha Vantage: 0 rows inserted")
+        elif av_failed:
+            problems.append(f"Alpha Vantage: failed symbols {av_failed}")
+
+        if problems:
+            raise RuntimeError("Partial ingestion failure: " + "; ".join(problems))
 
         mark_pipeline_success(cur)
         conn.commit()
