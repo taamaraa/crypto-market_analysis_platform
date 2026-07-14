@@ -19,8 +19,11 @@ with source as (
     from {{ source('raw_data', 'airflow_binance_daily') }}
     
     {% if is_incremental() %}
-    where date > (
-        select coalesce(max(trade_date), '1900-01-01'::date)
+    -- lookback window: the last candle Binance returns is the still-open
+    -- daily candle; the next run restates it in raw, and this overlap lets
+    -- the corrected close flow through (delete+insert dedupes)
+    where date >= (
+        select coalesce(max(trade_date), '1900-01-01'::date) - 3
         from {{ this }}
     )
     {% endif %}

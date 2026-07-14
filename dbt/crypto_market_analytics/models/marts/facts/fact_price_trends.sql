@@ -10,8 +10,10 @@ with filtered as (
     from {{ ref('price_with_averages') }} p
 
     {% if is_incremental() %}
-    where p.date > (
-        select coalesce(max(dd.full_date), '1900-01-01'::date)
+    -- 7-day lookback so restated prices re-flow into the moving averages
+    -- (delete+insert on the unique_key replaces the overlapping days)
+    where p.date >= (
+        select coalesce(max(dd.full_date), '1900-01-01'::date) - 7
         from {{ this }} f
         join {{ ref('dim_date') }} dd on f.date_key = dd.date_key
     )

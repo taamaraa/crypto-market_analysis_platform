@@ -44,8 +44,11 @@ filtered as (
     from base
 
     {% if is_incremental() %}
-    where date > (
-        select coalesce(max(dd.full_date), '1900-01-01'::date)
+    -- 7-day lookback: the watermark is global across sources, and stock
+    -- data (trading days only, published late) always lags crypto - a
+    -- strict `>` filter would drop late-arriving stock rows forever
+    where date >= (
+        select coalesce(max(dd.full_date), '1900-01-01'::date) - 7
         from {{ this }} f
         join {{ ref('dim_date') }} dd on f.date_key = dd.date_key
     )

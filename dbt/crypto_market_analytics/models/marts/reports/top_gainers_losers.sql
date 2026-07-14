@@ -9,8 +9,8 @@ with ranked as (
         volume,
         volatility_label,
         trade_date,
-        rank() over (order by price_change_percent desc) as gainer_rank,
-        rank() over (order by price_change_percent asc)  as loser_rank
+        rank() over (partition by trade_date order by price_change_percent desc) as gainer_rank,
+        rank() over (partition by trade_date order by price_change_percent asc)  as loser_rank
     from {{ ref('binance_metrics') }}
 ),
 

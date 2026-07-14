@@ -3,8 +3,13 @@ version: 2
 sources:
   - name: raw_data
     database: raw_data
-    schema: public_staging
+    # dbt reads from the permanent raw archive, never from the transient
+    # staging landing zone (public_staging), which is truncated every run.
+    schema: raw
     tables:
       - name: airflow_binance_daily
+        identifier: binance_daily
       - name: airflow_alpha_vantage
+        identifier: alpha_vantage
       - name: airflow_coingecko_daily
+        identifier: coingecko_daily
