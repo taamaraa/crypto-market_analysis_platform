@@ -19,6 +19,9 @@ with base as (
         date,
         price,
         total_volume,
+        open_price,
+        high_price,
+        low_price,
         case
             when source = 'coingecko' then 'CoinGecko'
             when source = 'binance' then 'Binance'
@@ -33,6 +36,9 @@ with base as (
         date,
         close as price,
         volume::float as total_volume,
+        null::float as open_price,
+        null::float as high_price,
+        null::float as low_price,
         'Alpha Vantage' as source_name
     from {{ source('raw_data', 'airflow_alpha_vantage') }}
 
@@ -44,9 +50,6 @@ filtered as (
     from base
 
     {% if is_incremental() %}
-    -- 7-day lookback: the watermark is global across sources, and stock
-    -- data (trading days only, published late) always lags crypto - a
-    -- strict `>` filter would drop late-arriving stock rows forever
     where date >= (
         select coalesce(max(dd.full_date), '1900-01-01'::date) - 7
         from {{ this }} f
@@ -61,11 +64,11 @@ select
     dd.date_key,
     ds.source_key,
     filtered.price,
-    filtered.total_volume
+    filtered.total_volume,
+    filtered.open_price,
+    filtered.high_price,
+    filtered.low_price
 from filtered
--- point-in-time join: match the dim_asset version that was active on the
--- fact's own date, NOT "whatever is current today" (that was the bug -
--- it silently re-pointed historical facts to today's asset_key on every run)
 join {{ ref('dim_asset') }} da
     on filtered.asset_id = da.asset_id
    and filtered.date >= da.valid_from::date

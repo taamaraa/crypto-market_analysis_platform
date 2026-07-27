@@ -7,7 +7,7 @@ DBT_BIN = "/home/airflow/.local/bin/dbt"
 DBT_PROJECT_DIR = "/opt/airflow/dbt/crypto_market_analytics"
 DBT_PROFILES_DIR = "/home/airflow/.dbt"
 
-ALERT_EMAIL = "t.srbinoska03@gmail.com"
+ALERT_EMAIL = "tamss9261@gmail.com"
 
 
 def notify_success(context):

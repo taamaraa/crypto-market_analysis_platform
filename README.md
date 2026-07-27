@@ -90,6 +90,8 @@ The platform was designed to:
 
 The platform integrates data from three independent financial APIs.
 
+Which sources are active and which assets/symbols get pulled from each is **not hardcoded in Python** - it's driven by a `config` schema in PostgreSQL (see [Config-Driven Ingestion](#config-driven-ingestion) below). The lists below reflect the default seeded configuration.
+
 ##  CoinGecko
 
 Cryptocurrency market data.
@@ -101,7 +103,7 @@ Collected information:
 - Market Capitalization
 - Total Trading Volume
 
-Supported assets:
+Seeded assets:
 
 - Bitcoin (BTC)
 - Ethereum (ETH)
@@ -140,9 +142,28 @@ Collected information:
 - Close
 - Volume
 
-Current implementation includes:
+Seeded symbols:
 
+- Apple (AAPL)
 - Tesla (TSLA)
+
+---
+
+#  Config-Driven Ingestion
+
+Instead of hardcoding sources and assets in `config.py`, ingestion is driven by five tables in the `config` schema (created and seeded automatically by `ingest.py` on startup):
+
+| Table | Purpose |
+|---|---|
+| `config.connections` | One row per API source - base URL, auth type, static request params, and an `is_active` flag to disable an entire source |
+| `config.asset_mapping` | One row per (source, symbol) - which coins/symbols get pulled per source, each with its own `is_active` flag |
+| `config.column_mapping` | One row per output column - maps a parsed API field to a destination staging column and data type |
+| `config.table_mapping` | One row per source - which staging table and primary key columns to write into |
+| `config.load_errors` | Per-symbol failure log for each run, so a single bad asset doesn't require digging through text logs |
+
+A single generic engine (`ingest_generic()` in `ingest.py`) reads these tables and handles every source identically. Adding a new asset, or turning one off, means **inserting/updating a row in `config.asset_mapping`** - no code change or redeploy required. Each source still needs one small `parse_*` adapter function to normalize its API response shape (CoinGecko, Binance and Alpha Vantage each return structurally different JSON), but everything downstream of that - column mapping, destination table, error handling - is fully config-driven.
+
+If a run has partial failures (some symbols succeed, others don't), `etl_control.last_run_status` is set to `PARTIAL_SUCCESS` rather than a blanket `SUCCESS`/`FAILED`, and the specific failures are recorded in `config.load_errors`.
 
 ---
 
@@ -717,6 +738,8 @@ dbt docs serve
 #  Features Implemented
 
 ✔ Multi-source API ingestion
+
+✔ Config-driven ingestion engine (sources & assets managed via DB tables, not code)
 
 ✔ Dockerized infrastructure
 

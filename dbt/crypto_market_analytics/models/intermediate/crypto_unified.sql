@@ -7,6 +7,9 @@ with coingecko as (
         price,
         market_cap,
         total_volume,
+        null::float as open_price,
+        null::float as high_price,
+        null::float as low_price,
         'coingecko' as source
     from {{ ref('coingecko_daily') }}
 ),
@@ -18,6 +21,9 @@ binance as (
         close_price as price,
         null::float as market_cap,
         quote_volume as total_volume,
+        open_price,
+        high_price,
+        low_price,
         'binance' as source
     from {{ ref('binance_metrics') }}
 ),
@@ -34,6 +40,9 @@ select
     price,
     market_cap,
     total_volume,
+    open_price,
+    high_price,
+    low_price,
     source
 from unified
 order by symbol, date

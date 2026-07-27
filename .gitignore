@@ -21,5 +21,7 @@ airflow/*.cfg
 *.log
 
 .vscode/
-.idea/dbt/my_dbt_project/airflow/dbt_profile/profiles.yml
-dbt/my_dbt_project/airflow/dbt_profile/
+.idea/
+.claude/
+dbt/crypto_market_analytics/airflow/dbt_profile/profiles.yml
+dbt/crypto_market_analytics/airflow/dbt_profile/

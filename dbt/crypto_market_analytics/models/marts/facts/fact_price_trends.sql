@@ -10,8 +10,6 @@ with filtered as (
     from {{ ref('price_with_averages') }} p
 
     {% if is_incremental() %}
-    -- 7-day lookback so restated prices re-flow into the moving averages
-    -- (delete+insert on the unique_key replaces the overlapping days)
     where p.date >= (
         select coalesce(max(dd.full_date), '1900-01-01'::date) - 7
         from {{ this }} f
@@ -28,8 +26,6 @@ select
     filtered.moving_avg_14d,
     filtered.moving_avg_30d
 from filtered
--- point-in-time join, same fix as fact_market_prices: match the dim_asset
--- version active on the fact's date, not "whatever is current today"
 join {{ ref('dim_asset') }} da
     on filtered.coin_id = da.symbol
    and filtered.date >= da.valid_from::date
