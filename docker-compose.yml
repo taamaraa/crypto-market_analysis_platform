@@ -66,6 +66,10 @@ services:
       AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD}
       AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
 
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
+
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
@@ -74,6 +78,8 @@ services:
       DB_SSLMODE: ${DB_SSLMODE}
 
       ALPHA_API_KEY: ${ALPHA_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
 
     volumes:
       - ./airflow/dags:/opt/airflow/dags
@@ -81,8 +87,7 @@ services:
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
       - ./dbt/crypto_market_analytics/airflow/dbt_profile:/home/airflow/.dbt
-      - ./ingest.py:/opt/airflow/ingest.py
-      - ./config.py:/opt/airflow/config.py
+      - ./scripts:/opt/airflow/scripts
     ports:
       - "8081:8080"
     command: airflow webserver
@@ -112,6 +117,10 @@ services:
       AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD}
       AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
 
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
+
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
@@ -120,6 +129,8 @@ services:
       DB_SSLMODE: ${DB_SSLMODE}
 
       ALPHA_API_KEY: ${ALPHA_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
 
     volumes:
       - ./airflow/dags:/opt/airflow/dags
@@ -127,8 +138,7 @@ services:
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
       - ./dbt/crypto_market_analytics/airflow/dbt_profile:/home/airflow/.dbt
-      - ./ingest.py:/opt/airflow/ingest.py
-      - ./config.py:/opt/airflow/config.py
+      - ./scripts:/opt/airflow/scripts
     command: airflow scheduler
     restart: always
 

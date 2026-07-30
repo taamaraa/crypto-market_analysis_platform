@@ -1,15 +1,33 @@
 {{ config(materialized='view') }}
 
-with crypto as (
+with crypto_raw as (
+
+    select
+        case
+            when source = 'binance' and symbol = 'BTCUSDT' then 'bitcoin'
+            when source = 'binance' and symbol = 'ETHUSDT' then 'ethereum'
+            when source = 'binance' and symbol = 'SOLUSDT' then 'solana'
+            when source = 'binance' and symbol = 'BNBUSDT' then 'binancecoin'
+            when source = 'binance' and symbol = 'ADAUSDT' then 'cardano'
+            else symbol
+        end as symbol,
+        date,
+        price,
+        total_volume
+    from {{ ref('crypto_unified') }}
+
+),
+
+crypto as (
 
     select
         symbol,
         date,
-        price,
-        total_volume,
-        source
-    from {{ ref('crypto_unified') }}
-    where source = 'coingecko'
+        avg(price) as price,
+        sum(total_volume) as total_volume,
+        'unified' as source
+    from crypto_raw
+    group by symbol, date
 
 ),
 
@@ -42,8 +60,8 @@ select
     total_volume,
     source,
     case
-        when source = 'alpha_vantage' then 'stock'
-        else 'crypto'
+        when source = 'alpha_vantage' then 'Stock'
+        else 'Crypto'
     end as asset_type
 from unified
 order by symbol, date

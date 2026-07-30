@@ -66,7 +66,7 @@ with DAG(
         bash_command="""
         set -e
         cd /opt/airflow
-        python ingest.py
+        python scripts/ingest.py
         """,
     )
 
@@ -78,7 +78,27 @@ with DAG(
     run_dbt_test = BashOperator(
         task_id="run_dbt_test",
         bash_command=dbt_command("test"),
+    )
+
+    run_alerts = BashOperator(
+        task_id="run_alerts",
+        bash_command="""
+        set -e
+        cd /opt/airflow
+        python scripts/alerts.py
+        """,
+    )
+
+    # notify_success sits on the last task in the chain, so the success email
+    # means the whole pipeline finished -- not just the alert step.
+    run_ai_summary = BashOperator(
+        task_id="run_ai_summary",
+        bash_command="""
+        set -e
+        cd /opt/airflow
+        python scripts/ai_summary.py
+        """,
         on_success_callback=notify_success,
     )
 
-    run_ingest >> run_dbt >> run_dbt_test
+    run_ingest >> run_dbt >> run_dbt_test >> run_alerts >> run_ai_summary

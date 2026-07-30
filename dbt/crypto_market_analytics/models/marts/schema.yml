@@ -114,3 +114,144 @@ models:
       - name: moving_avg_30d
         tests:
           - not_null
+
+  - name: fact_volume_analysis
+    columns:
+      - name: asset_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      # null when the 7d average volume is zero or not yet available
+      - name: volume_change_pct_7d
+
+      - name: is_volume_spike
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+  - name: fact_market_volatility
+    columns:
+      - name: asset_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      # both null until the 30d window has a non-zero mean and stddev
+      - name: coefficient_of_variation
+
+      - name: z_score
+
+      - name: is_anomaly
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+      # null where coefficient_of_variation could not be computed
+      - name: risk_level
+        tests:
+          - accepted_values:
+              values: ['low', 'medium', 'high']
+
+  - name: fact_market_alerts
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_id
+
+      - name: date
+        tests:
+          - not_null
+
+      - name: alert_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['price_drop', 'volume_spike', 'high_volatility']
+
+      - name: alert_message
+        tests:
+          - not_null
+
+  - name: fact_asset_correlation
+    columns:
+      - name: asset_key_a
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+
+      - name: asset_key_b
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      - name: symbol_a
+        tests:
+          - not_null
+
+      - name: symbol_b
+        tests:
+          - not_null
+
+      - name: pair_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Crypto-Crypto', 'Crypto-Stock', 'Stock-Stock']
+
+      # null on the first shared date of a pair -- corr() needs 2+ observations
+      - name: correlation_30d
+
+      - name: correlation_90d
+
+      - name: correlation_strength_30d
+        tests:
+          - accepted_values:
+              values:
+                - 'strong positive'
+                - 'moderate positive'
+                - 'weak / none'
+                - 'moderate negative'
+                - 'strong negative'
+
+      - name: observations_30d
+        tests:
+          - not_null
+
+      - name: observations_90d
+        tests:
+          - not_null

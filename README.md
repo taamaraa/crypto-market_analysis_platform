@@ -669,8 +669,10 @@ crypto-analysis-platform
 │       ├── snapshots
 │       └── dbt_project.yml
 │
-├── config.py
-├── ingest.py
+├── scripts
+│   ├── config.py
+│   ├── ingest.py
+│   └── alerts.py
 ├── docker-compose.yml
 ├── Dockerfile
 ├── requirements.txt
