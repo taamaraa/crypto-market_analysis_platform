@@ -287,7 +287,43 @@ Calculates additional Binance indicators such as:
 - volatility labels
 - quote volume
 
-These metrics are later used inside analytical reports.
+These metrics are later used inside analytical reports and are the training
+input for the forecasting models.
+
+---
+
+### market_comparison
+
+Unifies crypto and stocks into a single shape so downstream models can treat
+both asset types identically.
+
+- maps Binance tickers (`BTCUSDT`) to CoinGecko asset ids (`bitcoin`)
+- averages price and sums volume across sources per symbol and date
+- classifies each row as `Crypto` or `Stock`
+
+This is the base for the volume, volatility and alerting models.
+
+---
+
+### asset_returns
+
+Daily percentage change per asset, calculated with `LAG(price)`.
+
+Prices cannot be compared across assets (Bitcoin trades near $64,000 while
+Cardano trades near $0.17), so returns put every asset on the same scale.
+This is what makes correlation possible.
+
+---
+
+### volume_analysis
+
+Rolling 7-day and 30-day average volume per asset.
+
+---
+
+### price_volatility
+
+Rolling average and standard deviation of price over 7-day and 30-day windows.
 
 ---
 
@@ -452,15 +488,106 @@ This table supports trend analysis and visualization.
 
 ---
 
+## fact_volume_analysis
+
+Volume behaviour per asset and day.
+
+Measures:
+
+- `volume_change_pct_7d` — volume against its own 7-day average
+- `is_volume_spike` — true when volume exceeds twice the 30-day average
+
+---
+
+## fact_market_volatility
+
+Risk profile per asset and day.
+
+Measures:
+
+- `coefficient_of_variation` — standard deviation relative to the mean
+- `z_score` — how far the price sits from its 30-day average
+- `is_anomaly` — true when `|z_score| > 2`
+- `risk_level` — `low` / `medium` / `high`
+
+---
+
+## fact_asset_correlation
+
+Rolling 30-day and 90-day correlation of daily returns for every unique
+asset pair.
+
+The self-join uses `symbol_a < symbol_b`, which keeps each pair exactly once
+and removes self-pairs: 7 assets produce 21 pairs.
+
+Measures:
+
+- `correlation_30d`, `correlation_90d`
+- `correlation_strength_30d` — labelled bucket
+- `observations_30d`, `observations_90d` — how many aligned days the window
+  actually covered
+- `pair_type` — `Crypto-Crypto` / `Crypto-Stock` / `Stock-Stock`
+
+Because the join keeps only dates on which both assets traded, any pair
+involving a stock skips weekends, so its window spans more calendar time than
+a crypto-only pair. The observation counts make that visible.
+
+Result: crypto pairs average **0.84** correlation while crypto-to-stock pairs
+average **0.29**. Holding five cryptocurrencies is close to holding one
+position five times.
+
+---
+
+## fact_market_alerts
+
+Alert conditions detected across the warehouse, combined with `UNION ALL`:
+
+| Alert | Condition |
+|-------|-----------|
+| `price_drop` | daily change of −10% or worse |
+| `volume_spike` | volume above twice the 30-day average |
+| `high_volatility` | `risk_level = 'high'` |
+
+---
+
+## fact_forecast_detail
+
+One row per scored forecast: what each model predicted, what actually
+happened, and the error between them. This is the grain the accuracy model
+aggregates, so the join to the actuals lives in exactly one place.
+
+Today's forecast is deliberately absent — its target date has no completed
+daily candle yet, so there is nothing to score it against.
+
+---
+
+## fact_forecast_accuracy
+
+Forecast leaderboard per asset, model and horizon.
+
+Measures:
+
+- `mae`, `rmse`, `mape`
+- `n_predictions`
+- `vs_naive_pct` — the number to read first
+
+Absolute errors mean little on their own. A MAE of $970 is unreadable until
+you know the naive baseline scores $974 on the same days, so every model is
+expressed as a percentage against that baseline.
+
+---
+
 #  Database Structure
 
 The PostgreSQL warehouse is organized into multiple schemas.
 
 | Schema | Purpose |
 |---------|---------|
-| public_staging | Raw API data |
+| raw | Landing tables written by the ingestion script |
+| config | Ingestion configuration — connections, mappings, load errors |
+| public_staging | Source definitions |
 | public_intermediate | Business transformations |
-| public_marts | Final analytical models |
+| public_marts | Final analytical models, plus tables written by the Python tasks |
 
 This separation improves maintainability, simplifies debugging and keeps transformations organized according to the ELT architecture.
 
@@ -509,18 +636,6 @@ Apache Airflow orchestrates the complete ELT workflow.
 
 The pipeline is executed as a Directed Acyclic Graph (DAG).
 
-Pipeline steps:
-
-```text
-Data Ingestion
-        │
-        ▼
-dbt Run
-        │
-        ▼
-dbt Test
-```
-
 Responsibilities:
 
 - Execute ingestion scripts
@@ -528,18 +643,41 @@ Responsibilities:
 - Monitor pipeline status
 - Trigger dbt transformations
 - Validate warehouse quality
+- Send alert emails
+- Generate the AI market summary
+- Produce daily price forecasts
 
-Example DAG:
+DAG:
 
 ```text
-run_ingestion
-        │
-        ▼
-run_dbt_models
-        │
-        ▼
-run_dbt_tests
+run_ingest        fetch CoinGecko, Binance and Alpha Vantage
+      │
+      ▼
+run_dbt           build every model
+      │
+      ▼
+run_dbt_test      84 data quality tests
+      │
+      ▼
+run_forecast      naive, ETS, XGBoost and their ensemble
+      │
+      ▼
+run_alerts        email any newly triggered alert
+      │
+      ▼
+run_ai_summary    write the daily narrative summary
 ```
+
+Two ordering decisions worth noting:
+
+**`run_forecast` runs after dbt**, not before. It reads `binance_metrics`, and
+the accuracy model only ever scores forecasts whose target date already has an
+actual price — so today's forecast is scored by tomorrow's dbt run. That
+one-day lag is what allows a single dbt invocation per day.
+
+**`notify_success` sits on the last task in the chain.** A success email
+therefore means the whole pipeline finished, not just the step that happens to
+carry the callback.
 
 > **Screenshot**
 
@@ -583,6 +721,120 @@ The project also uses dbt lineage to visualize model dependencies.
 ```md
 ![dbt Lineage](docs/images/dbt-lineage.png)
 ```
+
+---
+
+#  Analytical Tasks
+
+Three Python tasks run alongside dbt. The split is deliberate: dbt is SQL and
+handles set-based transformation, while Python handles anything dbt cannot —
+sending mail, calling an API, fitting a model.
+
+Tables written by Python are declared as dbt **sources**, so downstream models
+can read them without dbt trying to build them.
+
+---
+
+## Market Alerts — `scripts/alerts.py`
+
+Reads today's rows from `fact_market_alerts`, inserts them into
+`market_alerts_log` with `ON CONFLICT DO NOTHING ... RETURNING id`, and emails
+only the rows that were genuinely new.
+
+The database enforces the deduplication rather than the script, so re-running
+the task never produces a duplicate email.
+
+---
+
+## AI Market Summary — `scripts/ai_summary.py`
+
+Turns the day's numbers into a short narrative for the dashboard.
+
+```text
+snapshot from the warehouse  →  prompt  →  Gemini  →  market_summaries
+```
+
+Design decisions:
+
+- **Numbers enter the prompt already formatted.** The model is asked to
+  describe `+2.34%`, never to calculate it, so it cannot produce a wrong
+  figure.
+- **Called over plain REST with `urllib`**, so no SDK dependency and no image
+  rebuild. Switching provider is a change to one function.
+- **Truncated answers are discarded.** A response that did not finish with
+  `finishReason: STOP` is rejected rather than stored — thinking models can
+  spend the whole token budget on thoughts and return half a sentence.
+- **A deterministic fallback** builds the summary directly from the same
+  snapshot whenever the API is unavailable. The task never fails and the
+  dashboard card is never empty.
+
+The `generated_by` column records whether a given summary came from the model
+or the fallback.
+
+---
+
+## Price Forecasting — `scripts/forecast.py`
+
+Four models, run daily and compared honestly.
+
+| Model | What it asks |
+|-------|--------------|
+| `naive` | What if we assume nothing changes? |
+| `ets` | Does the price series contain usable memory? |
+| `xgboost` | Do other signals — volume, volatility, moving averages — predict price? |
+| `ensemble` | Does averaging them beat any one of them? |
+
+Two modes:
+
+```bash
+python scripts/forecast.py             # predict tomorrow
+python scripts/forecast.py backtest    # walk-forward over history
+```
+
+Design decisions:
+
+- **Only completed days are used.** Binance closes its daily candle at 00:00
+  UTC while the DAG runs at 07:45 UTC, so the current day's row is always a
+  partial candle — roughly half a day of volume. Training on it teaches the
+  model the ingest schedule rather than the market.
+- **Trained on a single source.** Averaging two sources measured at different
+  times of day induces an artificial autocorrelation of ~0.5 in daily returns,
+  which a model would happily learn and appear to predict. Forecasting reads
+  Binance closes only.
+- **XGBoost predicts returns, never price levels.** Tree models cannot
+  extrapolate beyond their training range, so a price model would refuse to
+  forecast above the highest price it had ever seen.
+- **One global XGBoost across all five assets.** Returns are comparable
+  between assets, so pooling turns ~180 rows per asset into ~900.
+- **ETS is implemented directly** rather than pulled from `statsmodels`: it is
+  a dozen lines, it keeps `scipy` out of the image, and the fitted alpha stays
+  visible in `model_params`.
+- **Walk-forward backtesting**, not a single split. Each step trains only on
+  data preceding the day it predicts, producing ~62 honest forecasts per asset
+  instead of one lucky result.
+
+### Results
+
+Averaged across the five crypto assets, over 62 walk-forward predictions each:
+
+| Model | MAPE | vs naive |
+|-------|------|----------|
+| **ensemble** | **2.101%** | **+2.13%** |
+| naive | 2.134% | — |
+| ets | 2.144% | −0.41% |
+| xgboost | 2.295% | −6.21% |
+
+The ensemble wins on four of five assets. ETS fitted an alpha of **1.00** on
+three of them — the model searched twenty values and concluded that only
+yesterday carries information, which is a measured confirmation that the
+series is close to a random walk rather than a failure of the model.
+
+XGBoost loses to a one-line baseline, which answers its own question: volume
+and volatility do not predict next-day price on this data.
+
+This is the reason `naive` is in the table at all. Without it, "MAPE 2.295%"
+looks like a result instead of a warning, and there is no threshold for
+recognising a number that is too good to be true.
 
 ---
 
@@ -656,12 +908,15 @@ crypto-analysis-platform
 │   └── plugins
 │
 ├── dbt
-│   └── my_dbt_project
+│   └── crypto_market_analytics
 │       │
 │       ├── models
-│       │   ├── staging
-│       │   ├── intermediate
+│       │   ├── staging          sources.yml
+│       │   ├── intermediate     reusable business logic
 │       │   └── marts
+│       │       ├── dimensions
+│       │       ├── facts
+│       │       └── reports
 │       │
 │       ├── macros
 │       ├── tests
@@ -670,12 +925,15 @@ crypto-analysis-platform
 │       └── dbt_project.yml
 │
 ├── scripts
-│   ├── config.py
-│   ├── ingest.py
-│   └── alerts.py
+│   ├── config.py            shared connection settings
+│   ├── ingest.py            config-driven API ingestion
+│   ├── alerts.py            alert detection and email
+│   ├── ai_summary.py        LLM market narrative
+│   └── forecast.py          naive, ETS, XGBoost, ensemble
+│
+├── .env.example             template for required credentials
 ├── docker-compose.yml
 ├── Dockerfile
-├── requirements.txt
 └── README.md
 ```
 
@@ -693,28 +951,63 @@ cd crypto-analysis-platform
 
 ---
 
-## Start Docker
+## Configure Environment
+
+Copy the template and fill in your own values. `.env` is gitignored and never
+committed.
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Purpose |
+|----------|---------|
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSLMODE` | Analytical warehouse. A managed Postgres such as Neon needs `DB_SSLMODE=require` |
+| `AIRFLOW_DB_USER`, `AIRFLOW_DB_PASSWORD` | Airflow's own metadata database, in the local container |
+| `AIRFLOW_USER`, `AIRFLOW_PASSWORD` | Login for the Airflow web UI |
+| `FERNET_KEY` | Encrypts Airflow connections and variables |
+| `ALPHA_API_KEY` | Alpha Vantage stock data. CoinGecko and Binance need no key |
+| `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_MAIL_FROM` | Alert emails. With Gmail this must be an app password |
+| `GEMINI_API_KEY` | AI summary. Optional — without it the task writes a deterministic template |
+| `GEMINI_MODEL` | Optional override, defaults to `gemini-flash-lite-latest` |
+
+Both API keys are optional in the sense that the pipeline still completes
+without them: the AI summary falls back to a template, and missing SMTP
+credentials mean alerts are logged but not emailed.
+
+---
+
+## Build and Start Docker
+
+```bash
+docker compose build
+```
 
 ```bash
 docker compose up -d
 ```
 
+The build step is needed because the image adds `xgboost` on top of the base
+Airflow image. `pandas` and `numpy` already ship with Airflow, and `numpy` is
+pinned so that installing `xgboost` cannot pull an incompatible version.
+
 ---
 
-## Run Airflow
+## Open Airflow
 
 ```text
-http://localhost:8080
+http://localhost:8081
 ```
 
 ---
 
 ## Run dbt Models
 
-```bash
-cd dbt/my_dbt_project
+The checked-in profile is environment-driven and includes `sslmode`, so use it
+explicitly rather than any copy in `~/.dbt`:
 
-dbt run
+```bash
+set -a && source .env && set +a && dbt run --profiles-dir dbt/crypto_market_analytics/airflow/dbt_profile --project-dir dbt/crypto_market_analytics
 ```
 
 ---
@@ -722,7 +1015,18 @@ dbt run
 ## Execute Tests
 
 ```bash
-dbt test
+set -a && source .env && set +a && dbt test --profiles-dir dbt/crypto_market_analytics/airflow/dbt_profile --project-dir dbt/crypto_market_analytics
+```
+
+---
+
+## Seed the Forecast History
+
+The daily task produces one prediction per run. To populate the accuracy
+tables immediately, replay the history once:
+
+```bash
+docker exec airflow_scheduler sh -c 'cd /opt/airflow && python scripts/forecast.py backtest'
 ```
 
 ---
@@ -763,11 +1067,48 @@ dbt docs serve
 
 ✔ Moving Average calculations
 
-✔ Volatility metrics
+✔ Volume spike detection
 
-✔ Data Quality validation
+✔ Volatility metrics with z-scores and risk levels
+
+✔ Rolling asset correlation across 21 unique pairs
+
+✔ Market alert system with email delivery and database-level deduplication
+
+✔ AI-generated market summaries with a deterministic fallback
+
+✔ Price forecasting with walk-forward backtesting and a naive baseline
+
+✔ Data Quality validation — 84 automated tests
 
 ✔ Reporting models
+
+---
+
+#  Analytical Findings
+
+Results the pipeline produced, rather than features it implements.
+
+**Cryptocurrencies move as a single block.** Average 30-day return correlation
+between crypto pairs is 0.84, against 0.29 for crypto-to-stock pairs and 0.07
+for the stock pair. Holding five cryptocurrencies is closer to holding one
+position five times than to a diversified portfolio.
+
+**Daily crypto prices are close to a random walk.** Lag-1 autocorrelation of
+daily returns sits between −0.07 and +0.07 on single-source data, and no model
+beats a naive baseline by more than a few percent. The ensemble wins by 2.1%.
+
+**Volatility, unlike price, is predictable.** Autocorrelation of absolute
+returns is 0.16 to 0.22 at one day and remains near 0.20 after five,
+confirming volatility clustering — which is what `fact_market_volatility` and
+the alert system act on.
+
+**Averaging sources creates false signal.** Combining CoinGecko and Binance
+prices — measured at different times of day — raises the apparent
+autocorrelation of returns from ~0.05 to ~0.50. A model trained on the
+averaged series appears to predict the market while actually predicting an
+artefact of the transformation. The forecasting models therefore read a single
+source.
 
 ---
 
@@ -775,16 +1116,16 @@ dbt docs serve
 
 The following features are planned for future versions:
 
-- Power BI dashboards
+- Power BI dashboards for the volume, volatility, correlation and forecast models
+- Pipeline health page — source freshness, ingestion success, `config.load_errors` trend
 - Airbyte connectors
 - CI/CD pipeline
 - Automated deployment
 - Data freshness tests
-- Pipeline monitoring
-- Alerting
+- Multi-day forecast horizons
+- Volatility forecasting, where the data shows genuine signal
 - Unit testing
 - Additional financial APIs
-- Advanced analytical reports
 
 ---
 

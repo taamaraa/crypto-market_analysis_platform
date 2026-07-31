@@ -80,6 +80,19 @@ with DAG(
         bash_command=dbt_command("test"),
     )
 
+    # Runs after dbt on purpose. It reads binance_metrics, and the accuracy
+    # model only ever scores forecasts whose target date already has an
+    # actual -- so today's forecast is scored by tomorrow's dbt run and no
+    # second dbt invocation is needed.
+    run_forecast = BashOperator(
+        task_id="run_forecast",
+        bash_command="""
+        set -e
+        cd /opt/airflow
+        python scripts/forecast.py
+        """,
+    )
+
     run_alerts = BashOperator(
         task_id="run_alerts",
         bash_command="""
@@ -101,4 +114,4 @@ with DAG(
         on_success_callback=notify_success,
     )
 
-    run_ingest >> run_dbt >> run_dbt_test >> run_alerts >> run_ai_summary
+    run_ingest >> run_dbt >> run_dbt_test >> run_forecast >> run_alerts >> run_ai_summary

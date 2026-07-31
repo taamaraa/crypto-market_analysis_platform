@@ -12,3 +12,11 @@ sources:
         identifier: alpha_vantage
       - name: airflow_coingecko_daily
         identifier: coingecko_daily
+
+  # Tables written by the Python tasks rather than by dbt. They are declared
+  # as sources so models can ref them without dbt trying to build them.
+  - name: python_marts
+    database: "{{ env_var('DB_NAME', 'raw_data') }}"
+    schema: public_marts
+    tables:
+      - name: fact_price_forecast

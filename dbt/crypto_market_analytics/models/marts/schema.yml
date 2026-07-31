@@ -255,3 +255,86 @@ models:
       - name: observations_90d
         tests:
           - not_null
+
+  - name: fact_forecast_detail
+    columns:
+      - name: asset_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      - name: model_name
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['naive', 'ets', 'xgboost', 'ensemble']
+
+      - name: predicted_price
+        tests:
+          - not_null
+
+      - name: actual_price
+        tests:
+          - not_null
+
+      - name: abs_pct_error
+        tests:
+          - not_null
+
+  - name: fact_forecast_accuracy
+    columns:
+      - name: asset_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+
+      - name: asset_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_id
+
+      - name: symbol
+        tests:
+          - not_null
+
+      - name: model_name
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['naive', 'ets', 'xgboost', 'ensemble']
+
+      - name: horizon_days
+        tests:
+          - not_null
+
+      - name: n_predictions
+        tests:
+          - not_null
+
+      - name: mae
+        tests:
+          - not_null
+
+      - name: rmse
+        tests:
+          - not_null
+
+      - name: mape
+        tests:
+          - not_null
+
+      # null only if a symbol somehow has no naive baseline to compare against
+      - name: vs_naive_pct
