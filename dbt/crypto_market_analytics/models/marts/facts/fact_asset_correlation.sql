@@ -1,4 +1,4 @@
-{{ config(materialized='view') }}
+{{ config(materialized='table') }}
 
 -- Rolling correlation of daily returns for every unique asset pair.
 --

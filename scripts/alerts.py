@@ -58,12 +58,22 @@ def log_new_alerts(cur, alerts):
     return new_alerts
 
 
+def _display_symbol(symbol):
+    """Crypto assets are stored lowercase in dim_asset ('cardano', 'bitcoin');
+    stock tickers are already uppercase ('AAPL', 'TSLA'). Capitalizing only
+    the first character handles both without lowercasing a ticker."""
+    return symbol[:1].upper() + symbol[1:]
+
+
 def send_alert_email(new_alerts):
     if not SMTP_USER or not SMTP_PASSWORD:
         log.warning("SMTP_USER/SMTP_PASSWORD not set, skipping email send.")
         return
 
-    body_lines = [f"- {symbol}: {message}" for symbol, _, message in new_alerts]
+    body_lines = [
+        f"- {_display_symbol(symbol)}: {message}"
+        for symbol, _, message in new_alerts
+    ]
     body = "Market alerts triggered today:\n\n" + "\n".join(body_lines)
 
     msg = MIMEText(body)

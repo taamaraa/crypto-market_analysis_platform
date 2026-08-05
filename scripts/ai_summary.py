@@ -134,6 +134,13 @@ def gather_snapshot(cur):
     return snapshot
 
 
+def _display_symbol(symbol):
+    """Crypto assets are stored lowercase in dim_asset ('cardano', 'bitcoin');
+    stock tickers are already uppercase ('AAPL', 'TSLA'). Capitalizing only
+    the first character handles both without lowercasing a ticker."""
+    return symbol[:1].upper() + symbol[1:]
+
+
 def fmt_price(price):
     if price is None:
         return "n/a"
@@ -157,14 +164,19 @@ def build_prompt(snapshot):
         lines.append(f"{asset_type.upper()}:")
         for symbol, _, price, return_pct, date in rows:
             suffix = "" if date == snapshot["as_of_date"] else f" [as of {date}]"
-            lines.append(f"  {symbol}: {fmt_price(price)} ({fmt_pct(return_pct)}){suffix}")
+            lines.append(
+                f"  {_display_symbol(symbol)}: {fmt_price(price)} ({fmt_pct(return_pct)}){suffix}"
+            )
         lines.append("")
 
     if snapshot["alerts"]:
         total = sum(row[1] for row in snapshot["alerts"])
         lines.append(f"ACTIVE ALERTS ({total}):")
         for alert_type, count, symbols in snapshot["alerts"]:
-            lines.append(f"  {alert_type} x{count}: {symbols}")
+            display_symbols = ", ".join(
+                _display_symbol(s.strip()) for s in symbols.split(",")
+            )
+            lines.append(f"  {alert_type} x{count}: {display_symbols}")
     else:
         lines.append("ACTIVE ALERTS: none")
     lines.append("")
@@ -297,8 +309,8 @@ def fallback_summary(snapshot):
         best_symbol, _, _, best_pct, _ = ranked[0]
         worst_symbol, _, _, worst_pct, _ = ranked[-1]
         parts.append(
-            f"Best performer: {best_symbol} at {fmt_pct(best_pct)}. "
-            f"Weakest: {worst_symbol} at {fmt_pct(worst_pct)}."
+            f"Best performer: {_display_symbol(best_symbol)} at {fmt_pct(best_pct)}. "
+            f"Weakest: {_display_symbol(worst_symbol)} at {fmt_pct(worst_pct)}."
         )
 
     if snapshot["alerts"]:

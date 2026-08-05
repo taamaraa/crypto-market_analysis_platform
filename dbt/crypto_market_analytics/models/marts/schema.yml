@@ -134,6 +134,10 @@ models:
       # null when the 7d average volume is zero or not yet available
       - name: volume_change_pct_7d
 
+      # null when the 30d average volume is zero or not yet available;
+      # this is the figure is_volume_spike is actually measured against
+      - name: volume_change_pct_30d
+
       - name: is_volume_spike
         tests:
           - not_null
@@ -272,17 +276,23 @@ models:
               to: ref('dim_date')
               field: date_key
 
+      - name: target_name
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['price', 'volatility', 'volume']
+
       - name: model_name
         tests:
           - not_null
           - accepted_values:
               values: ['naive', 'ets', 'xgboost', 'ensemble']
 
-      - name: predicted_price
+      - name: predicted_value
         tests:
           - not_null
 
-      - name: actual_price
+      - name: actual_value
         tests:
           - not_null
 
@@ -309,6 +319,12 @@ models:
       - name: symbol
         tests:
           - not_null
+
+      - name: target_name
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['price', 'volatility', 'volume']
 
       - name: model_name
         tests:

@@ -1,4 +1,4 @@
-{{ config(materialized='view') }}
+{{ config(materialized='table') }}
 
 with volume_calc as (
     select
@@ -11,6 +11,14 @@ with volume_calc as (
             when avg_volume_7d = 0 or avg_volume_7d is null then null
             else round(((total_volume - avg_volume_7d) / avg_volume_7d * 100)::numeric, 2)
         end as volume_change_pct_7d,
+        -- Same base the spike condition below actually uses. Kept separate
+        -- from volume_change_pct_7d because a spike is measured against the
+        -- 30-day average, not the 7-day one -- reporting the 7d figure next
+        -- to a 30d-triggered spike would be a mismatched number.
+        case
+            when avg_volume_30d = 0 or avg_volume_30d is null then null
+            else round(((total_volume - avg_volume_30d) / avg_volume_30d * 100)::numeric, 2)
+        end as volume_change_pct_30d,
         case
             when avg_volume_30d > 0 and total_volume > (avg_volume_30d * 2) then true
             else false
@@ -22,6 +30,7 @@ select
     da.asset_key,
     dd.date_key,
     volume_calc.volume_change_pct_7d,
+    volume_calc.volume_change_pct_30d,
     volume_calc.is_volume_spike
 from volume_calc
 join {{ ref('dim_asset') }} da
