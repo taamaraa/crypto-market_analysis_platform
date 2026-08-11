@@ -355,6 +355,23 @@ dim_source ||--o{ fact_market_prices : source_key
 dim_asset ||--o{ fact_price_trends : asset_key
 dim_date ||--o{ fact_price_trends : date_key
 
+dim_asset ||--o{ fact_volume_analysis : asset_key
+dim_date ||--o{ fact_volume_analysis : date_key
+
+dim_asset ||--o{ fact_market_volatility : asset_key
+dim_date ||--o{ fact_market_volatility : date_key
+
+dim_asset ||--o{ fact_asset_correlation : asset_key_a
+dim_asset ||--o{ fact_asset_correlation : asset_key_b
+dim_date ||--o{ fact_asset_correlation : date_key
+
+dim_asset ||--o{ fact_market_alerts : symbol
+
+dim_asset ||--o{ fact_forecast_detail : asset_key
+dim_date ||--o{ fact_forecast_detail : date_key
+
+dim_asset ||--o{ fact_forecast_accuracy : asset_key
+
 dim_asset {
     int asset_key PK
     string asset_id
@@ -397,7 +414,78 @@ fact_price_trends {
     float moving_avg_14d
     float moving_avg_30d
 }
+
+fact_volume_analysis {
+    int asset_key FK
+    int date_key FK
+    numeric volume_change_pct_7d
+    numeric volume_change_pct_30d
+    boolean is_volume_spike
+}
+
+fact_market_volatility {
+    int asset_key FK
+    int date_key FK
+    float coefficient_of_variation
+    float z_score
+    boolean is_anomaly
+    string risk_level
+}
+
+fact_asset_correlation {
+    int asset_key_a FK
+    int asset_key_b FK
+    int date_key FK
+    string symbol_a
+    string symbol_b
+    string pair_type
+    numeric correlation_30d
+    numeric correlation_90d
+    string correlation_strength_30d
+    int observations_30d
+    int observations_90d
+}
+
+fact_market_alerts {
+    string symbol FK
+    date date
+    string alert_type
+    string alert_message
+}
+
+fact_forecast_detail {
+    int asset_key FK
+    int date_key FK
+    string asset_id
+    string symbol
+    date target_date
+    string target_name
+    string model_name
+    int horizon_days
+    string model_params
+    numeric predicted_value
+    numeric actual_value
+    numeric error
+    numeric abs_error
+    numeric abs_pct_error
+}
+
+fact_forecast_accuracy {
+    int asset_key FK
+    string asset_id
+    string symbol
+    string target_name
+    string model_name
+    int horizon_days
+    int n_predictions
+    numeric mae
+    numeric rmse
+    numeric mape
+    numeric vs_naive_pct
+}
 ```
+
+`fact_price_forecast` is intentionally left out of this diagram: it is written directly by `scripts/forecast.py`, keyed on `(symbol, target_date, target_name, model_name, horizon_days)` with Binance tickers rather than `asset_key`, and holds every raw prediction — including today's, which has no actual value yet to join against. `fact_forecast_detail` is the dbt model that joins it to reality once the target date has a completed candle; that is the table BI tools should read for scored history. `market_summaries` and `market_alerts_log` (also Python-written, see [Analytical Tasks](#analytical-tasks)) are append-only logs rather than dimensional facts, so they are not part of the star schema either.
 
 ---
 

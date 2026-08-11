@@ -35,11 +35,19 @@ def setup_alerts_table(cur):
     log.info("market_alerts_log table ready.")
 
 
-def get_todays_alerts(cur):
+def get_unsent_alerts(cur):
+    # Match on the same (asset_id, alert_date, alert_type) key market_alerts_log
+    # dedupes on, rather than filtering fact_market_alerts by "today" -- a
+    # delayed or backfilled run has no wall-clock date that reliably lines up
+    # with the date a given alert condition was actually computed for.
     cur.execute("""
-        SELECT symbol, date, alert_type, alert_message
-        FROM public_marts.fact_market_alerts
-        WHERE date = CURRENT_DATE
+        SELECT fma.symbol, fma.date, fma.alert_type, fma.alert_message
+        FROM public_marts.fact_market_alerts fma
+        LEFT JOIN public_marts.market_alerts_log mal
+            ON mal.asset_id = fma.symbol
+           AND mal.alert_date = fma.date
+           AND mal.alert_type = fma.alert_type
+        WHERE mal.id IS NULL
     """)
     return cur.fetchall()
 
@@ -74,7 +82,7 @@ def send_alert_email(new_alerts):
         f"- {_display_symbol(symbol)}: {message}"
         for symbol, _, message in new_alerts
     ]
-    body = "Market alerts triggered today:\n\n" + "\n".join(body_lines)
+    body = "New market alerts:\n\n" + "\n".join(body_lines)
 
     msg = MIMEText(body)
     msg["Subject"] = f"Crypto Pipeline: {len(new_alerts)} new market alert(s)"
@@ -96,8 +104,8 @@ def run():
     setup_alerts_table(cur)
     conn.commit()
 
-    alerts = get_todays_alerts(cur)
-    log.info(f"Found {len(alerts)} alert condition(s) today.")
+    alerts = get_unsent_alerts(cur)
+    log.info(f"Found {len(alerts)} unsent alert condition(s).")
 
     new_alerts = log_new_alerts(cur, alerts)
     conn.commit()
