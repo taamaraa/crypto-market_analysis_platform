@@ -620,8 +620,8 @@ Because the join keeps only dates on which both assets traded, any pair
 involving a stock skips weekends, so its window spans more calendar time than
 a crypto-only pair. The observation counts make that visible.
 
-Result: crypto pairs average **0.84** correlation while crypto-to-stock pairs
-average **0.29**. Holding five cryptocurrencies is close to holding one
+Result: crypto pairs average **0.82** correlation while crypto-to-stock pairs
+average **0.16**. Holding five cryptocurrencies is close to holding one
 position five times.
 
 ---
@@ -744,7 +744,7 @@ run_ingest        fetch CoinGecko, Binance and Alpha Vantage
 run_dbt           build every model
       │
       ▼
-run_dbt_test      84 data quality tests
+run_dbt_test      88 data quality tests
       │
       ▼
 run_forecast      naive, ETS, XGBoost and their ensemble
@@ -898,29 +898,40 @@ Design decisions:
   a dozen lines, it keeps `scipy` out of the image, and the fitted alpha stays
   visible in `model_params`.
 - **Walk-forward backtesting**, not a single split. Each step trains only on
-  data preceding the day it predicts, producing ~62 honest forecasts per asset
+  data preceding the day it predicts, producing 72 honest forecasts per asset
   instead of one lucky result.
 
 ### Results
 
-Averaged across the five crypto assets, over 62 walk-forward predictions each:
+Averaged across the five crypto assets, over 72 walk-forward predictions each
+(30 May – 12 Aug 2026, 360 scored forecasts per model):
 
 | Model | MAPE | vs naive |
 |-------|------|----------|
-| **ensemble** | **2.101%** | **+2.13%** |
-| naive | 2.134% | — |
-| ets | 2.144% | −0.41% |
-| xgboost | 2.295% | −6.21% |
+| **ensemble** | **2.004%** | **+1.85%** |
+| naive | 2.032% | — |
+| ets | 2.041% | −0.39% |
+| xgboost | 2.190% | −6.64% |
 
-The ensemble wins on four of five assets. ETS fitted an alpha of **1.00** on
-three of them — the model searched twenty values and concluded that only
-yesterday carries information, which is a measured confirmation that the
-series is close to a random walk rather than a failure of the model.
+Per asset, the ensemble beats the baseline on four of five:
+
+| Asset | vs naive | MAPE |
+|-------|----------|------|
+| SOL | +3.52% | 2.023% |
+| BNB | +3.42% | 1.492% |
+| ETH | +1.77% | 1.933% |
+| BTC | +1.73% | 1.415% |
+| ADA | −1.18% | 3.155% |
+
+ETS fitted an alpha of **1.00** on four of the five — the model searched twenty
+values and concluded that only yesterday carries information, which is a
+measured confirmation that the series is close to a random walk rather than a
+failure of the model.
 
 XGBoost loses to a one-line baseline, which answers its own question: volume
 and volatility do not predict next-day price on this data.
 
-This is the reason `naive` is in the table at all. Without it, "MAPE 2.295%"
+This is the reason `naive` is in the table at all. Without it, "MAPE 2.190%"
 looks like a result instead of a warning, and there is no threshold for
 recognising a number that is too good to be true.
 
@@ -1167,7 +1178,7 @@ dbt docs serve
 
 ✔ Price forecasting with walk-forward backtesting and a naive baseline
 
-✔ Data Quality validation — 84 automated tests
+✔ Data Quality validation — 88 automated tests
 
 ✔ Reporting models
 
@@ -1178,13 +1189,13 @@ dbt docs serve
 Results the pipeline produced, rather than features it implements.
 
 **Cryptocurrencies move as a single block.** Average 30-day return correlation
-between crypto pairs is 0.84, against 0.29 for crypto-to-stock pairs and 0.07
+between crypto pairs is 0.82, against 0.16 for crypto-to-stock pairs and 0.18
 for the stock pair. Holding five cryptocurrencies is closer to holding one
 position five times than to a diversified portfolio.
 
 **Daily crypto prices are close to a random walk.** Lag-1 autocorrelation of
 daily returns sits between −0.07 and +0.07 on single-source data, and no model
-beats a naive baseline by more than a few percent. The ensemble wins by 2.1%.
+beats a naive baseline by more than a few percent. The ensemble wins by 1.85%.
 
 **Volatility, unlike price, is predictable.** Autocorrelation of absolute
 returns is 0.16 to 0.22 at one day and remains near 0.20 after five,
