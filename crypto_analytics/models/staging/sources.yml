@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: raw_data
+    schema: public
+    tables:
+      - name: stg_coingecko
+      - name: stg_binance
+      - name: stg_alphavantage

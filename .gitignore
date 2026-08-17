@@ -1,0 +1,18 @@
+# secrets
+.env
+config/airflow.cfg
+
+# generated / runtime data
+logs/
+crypto_analytics/logs/
+crypto_analytics/target/
+crypto_analytics/dbt_packages/
+backups/
+/*.sql
+
+# python
+__pycache__/
+*.pyc
+
+ingestion/config.yaml
+crypto_analytics/profiles.yml

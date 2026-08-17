@@ -1,0 +1,166 @@
+version: 2
+
+models:
+  - name: dim_date
+    columns:
+      - name: date_key
+        tests:
+          - unique
+          - not_null
+      - name: full_date
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_source
+    columns:
+      - name: source_key
+        tests:
+          - unique
+          - not_null
+      - name: source_name
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_asset
+    columns:
+      - name: asset_key
+        tests:
+          - unique
+          - not_null
+      - name: asset_id
+        tests:
+          - not_null
+      - name: symbol
+        tests:
+          - not_null
+      - name: asset_type
+        tests:
+          - not_null
+      - name: valid_from
+        tests:
+          - not_null
+      - name: is_active
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+  - name: fact_prices
+    columns:
+      - name: asset_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+      - name: price
+        tests:
+          - not_null
+
+  - name: fact_moving_avg
+    columns:
+      - name: asset_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: avg_price_7d
+        tests:
+          - not_null
+      - name: avg_price_14d
+        tests:
+          - not_null
+      - name: avg_price_30d
+        tests:
+          - not_null
+
+  - name: fact_volume_analysis
+    columns:
+      - name: asset_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: is_volume_spike
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+  - name: fact_market_volatility
+    columns:
+      - name: asset_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: risk_level
+        tests:
+          - accepted_values:
+              values: ['low', 'medium', 'high']
+      - name: is_anomaly
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+  - name: fact_asset_correlation
+    columns:
+      - name: asset_key_a
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+      - name: asset_key_b
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: corr_30d
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -1
+              max_value: 1

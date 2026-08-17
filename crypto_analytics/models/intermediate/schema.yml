@@ -1,0 +1,89 @@
+version: 2
+
+models:
+  - name: int_crypto_prices
+    columns:
+      - name: coin_id
+        tests:
+          - not_null
+      - name: price_date
+        tests:
+          - not_null
+      - name: price
+        tests:
+          - not_null
+
+  - name: int_average_price
+    columns:
+      - name: coin_id
+        tests:
+          - not_null
+      - name: date
+        tests:
+          - not_null
+      - name: avg_price_30d
+        tests:
+          - not_null
+
+  - name: int_market_comparison
+    columns:
+      - name: coin_id
+        tests:
+          - not_null
+      - name: date
+        tests:
+          - not_null
+      - name: price
+        tests:
+          - not_null
+      - name: asset_type
+        tests:
+          - not_null
+          - accepted_values:
+              name: accepted_values_asset_type
+              values: ['crypto', 'stock']
+
+  - name: int_market_overview
+    columns:
+      - name: coin_id
+        tests:
+          - not_null
+      - name: ingested_at
+        tests:
+          - not_null
+      - name: avg_price
+        tests:
+          - not_null
+
+  - name: int_volume_analysis
+    columns:
+      - name: coin_id
+        tests:
+          - not_null
+      - name: date
+        tests:
+          - not_null
+      - name: avg_volume_30d
+        tests:
+          - not_null
+
+  - name: int_price_volatility
+    columns:
+      - name: coin_id
+        tests:
+          - not_null
+      - name: date
+        tests:
+          - not_null
+      - name: avg_price_30d
+        tests:
+          - not_null
+
+  - name: int_asset_returns
+    columns:
+      - name: coin_id
+        tests:
+          - not_null
+      - name: date
+        tests:
+          - not_null
