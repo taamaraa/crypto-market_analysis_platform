@@ -377,7 +377,6 @@ dim_asset {
     string asset_id
     string symbol
     string asset_type
-    float price
     timestamp valid_from
     timestamp valid_to
     boolean is_current
@@ -501,12 +500,11 @@ Columns:
 - asset_id
 - symbol
 - asset_type
-- price
 - valid_from
 - valid_to
 - is_current
 
-This dimension implements **Slowly Changing Dimension Type 2**, allowing historical tracking of price changes over time.
+This dimension implements **Slowly Changing Dimension Type 2**, allowing historical tracking of changes to `symbol` and `asset_type`. Price is a daily-changing measure, not a slowly changing attribute, so it lives in the fact tables (`fact_market_prices.price`) instead of here.
 
 ---
 
@@ -685,7 +683,9 @@ The **dim_asset** dimension implements **Slowly Changing Dimension Type 2 (SCD T
 
 Unlike a traditional update, historical records are never overwritten.
 
-Instead, whenever an attribute changes (currently the **asset price**), a new version of the record is inserted while the previous version is marked as inactive.
+Instead, whenever `symbol` or `asset_type` changes for an asset, a new version of the record is inserted while the previous version is marked as inactive. Price is intentionally excluded from this comparison — it changes daily, and versioning a dimension on every price tick would explode the row count for no benefit. Price already lives where a fast-changing measure belongs: in the fact tables (`fact_market_prices.price`), joined to the correct `dim_asset` version through the same `valid_from`/`valid_to` window described below.
+
+In practice this means new versions are rare: `symbol` and `asset_type` almost never change for an asset already in the warehouse, so most `dbt run`s find nothing to version. What does trigger a new row is a brand new asset appearing in `config.asset_mapping` (inserted as a fresh, first version) or an asset changing type.
 
 ## Implementation
 
@@ -697,7 +697,7 @@ The following columns are used for versioning:
 | valid_to | Timestamp when the record expired |
 | is_current | Indicates the currently active version |
 
-When a price change is detected:
+When a `symbol` or `asset_type` change is detected:
 
 Previous record:
 
@@ -714,7 +714,7 @@ valid_to = NULL
 is_current = true
 ```
 
-This approach enables historical reporting while preserving previous versions of each asset.
+Every fact table joins to `dim_asset` on `asset_id` plus a point-in-time condition (`date >= valid_from and (valid_to is null or date < valid_to)`), so each fact row is always attached to whichever dimension version was active on its date — this is what makes the versioning useful, even though new versions are infrequent in this dataset.
 
 ---
 
